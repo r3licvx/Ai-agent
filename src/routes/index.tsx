@@ -1,7 +1,16 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { toast } from "sonner";
-import { Loader2, SendHorizontal, Settings, Pencil, X, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  SendHorizontal,
+  Settings,
+  Pencil,
+  X,
+  AlertTriangle,
+  ArrowDown,
+  Square,
+} from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { sendChatMessage } from "@/lib/ai.functions";
 import { MessageBubble, TypingBubble, type ChatMessage } from "@/components/chat/MessageBubble";
@@ -13,10 +22,17 @@ import { LEOMA_IDENTITY, DEFAULT_SYSTEM_PROMPT } from "@/lib/constants";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Aarambh — Private Chat" },
+      { title: "तत्व AI — Private AI Chat" },
       {
         name: "description",
-        content: "Chat privately with Aarambh, your personal AI companion.",
+        content:
+          "A private, intelligent AI chat agent with local storage and deep reasoning capabilities.",
+      },
+      { property: "og:title", content: "तत्व AI" },
+      {
+        property: "og:description",
+        content:
+          "A private, intelligent AI chat agent with local storage and deep reasoning capabilities.",
       },
     ],
   }),
@@ -30,6 +46,7 @@ function ChatPage() {
   const [loadingMessages, setLoadingMessages] = useState(true);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [isStreamingActive, setIsStreamingActive] = useState(false);
 
   // Edit Message states
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -38,6 +55,10 @@ function ChatPage() {
   // AI Chat Clear Overlay & Confirmation State
   const [isClearingChat, setIsClearingChat] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  // Abort controller and stream reference
+  const isAbortedRef = useRef(false);
+  const activeStreamMessageIdRef = useRef<string | null>(null);
 
   // Execute chat memory clearing with smooth animation
   const executeClearChat = () => {
@@ -62,8 +83,12 @@ function ChatPage() {
     return emojis[(nameSeed + new Date().getHours()) % emojis.length];
   }, [profile?.display_name]);
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isUserScrolledUpRef = useRef(false);
+  const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
+  const [unreadDuringScroll, setUnreadDuringScroll] = useState(false);
 
   useEffect(() => {
     if (!loading && !session) void navigate({ to: "/auth" });
@@ -94,23 +119,54 @@ function ChatPage() {
     }
   }, [session, loadLocalMessages]);
 
-  const scrollToBottom = useCallback(
-    (smooth = true, blockPosition: ScrollLogicalPosition = "center") => {
-      requestAnimationFrame(() => {
-        bottomRef.current?.scrollIntoView({
-          behavior: smooth ? "smooth" : "auto",
-          block: blockPosition,
-        });
-      });
-    },
-    [],
-  );
+  // Monitor scroll position: detect when user intentionally scrolls up to read history
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    const isNear = distanceFromBottom <= 60;
 
-  useEffect(() => {
-    if (messages.length > 0 || thinking) {
-      scrollToBottom(true, "center");
+    if (isNear) {
+      isUserScrolledUpRef.current = false;
+      setShowScrollBottomBtn(false);
+      setUnreadDuringScroll(false);
+    } else {
+      isUserScrolledUpRef.current = true;
+      setShowScrollBottomBtn(true);
     }
-  }, [messages, thinking, scrollToBottom]);
+  }, []);
+
+  // Jitter-free instant scroll to bottom during typewriter streaming
+  const autoScrollToBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    if (isUserScrolledUpRef.current) {
+      setUnreadDuringScroll(true);
+      return;
+    }
+    container.scrollTop = container.scrollHeight;
+  }, []);
+
+  // User-initiated smooth glide to bottom
+  const smoothScrollToBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    isUserScrolledUpRef.current = false;
+    setShowScrollBottomBtn(false);
+    setUnreadDuringScroll(false);
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: "smooth",
+    });
+  }, []);
+
+  // On first load of messages, jump to bottom directly
+  useEffect(() => {
+    if (messages.length > 0 && !isUserScrolledUpRef.current && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [loadingMessages, messages.length]);
 
   const persistMessages = (msgs: ChatMessage[]) => {
     if (typeof window !== "undefined") {
@@ -122,10 +178,13 @@ function ChatPage() {
     }
   };
 
-  // Progressive Typewriter Animation Effect for New Style Streaming
+  // Progressive Typewriter Animation Effect with jitter-free auto-scrolling
   const streamAssistantReply = async (fullReply: ChatMessage) => {
     const fullText = fullReply.content;
     const replyId = fullReply.id;
+    activeStreamMessageIdRef.current = replyId;
+    isAbortedRef.current = false;
+    setIsStreamingActive(true);
 
     const tokens = fullText.match(/\S+|\s+/g) || [fullText];
 
@@ -133,6 +192,7 @@ function ChatPage() {
       ...fullReply,
       content: "",
       isStreaming: true,
+      isAborted: false,
     };
 
     setMessages((prev) => [...prev, placeholderMsg]);
@@ -142,6 +202,9 @@ function ChatPage() {
     const stepSize = Math.max(1, Math.floor(tokens.length / 120));
 
     for (let i = 0; i < tokens.length; i += stepSize) {
+      if (isAbortedRef.current) {
+        break;
+      }
       const chunk = tokens.slice(i, i + stepSize).join("");
       accumulatedText += chunk;
 
@@ -149,21 +212,139 @@ function ChatPage() {
         prev.map((m) => (m.id === replyId ? { ...m, content: accumulatedText } : m)),
       );
 
-      scrollToBottom(true, "center");
+      autoScrollToBottom();
 
-      const delay = /[.!?\n]/.test(chunk) ? 32 : 16;
+      const delay = /[.!?\n]/.test(chunk) ? 28 : 14;
       await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+
+    const wasAborted = isAbortedRef.current;
+    if (wasAborted) {
+      // User requested: "पूरा सब कुछ गायब हो जाएगा" - remove incomplete response completely
+      setMessages((prev) => {
+        const cleaned = prev.filter((m) => m.id !== replyId);
+        persistMessages(cleaned);
+        return cleaned;
+      });
+      activeStreamMessageIdRef.current = null;
+      setIsStreamingActive(false);
+      return;
     }
 
     setMessages((prev) => {
       const final = prev.map((m) =>
-        m.id === replyId ? { ...m, content: fullText, isStreaming: false } : m,
+        m.id === replyId
+          ? {
+              ...m,
+              content: fullText,
+              isStreaming: false,
+              isAborted: false,
+            }
+          : m,
       );
       persistMessages(final);
       return final;
     });
 
-    scrollToBottom(true, "center");
+    activeStreamMessageIdRef.current = null;
+    setIsStreamingActive(false);
+    autoScrollToBottom();
+  };
+
+  // Stop Generation Handler
+  const handleStopGeneration = () => {
+    isAbortedRef.current = true;
+    setThinking(false);
+    setIsStreamingActive(false);
+
+    const activeId = activeStreamMessageIdRef.current;
+    if (activeId) {
+      // Incomplete generation is removed so everything is clean ("पूरा सब कुछ गायब हो जाएगा")
+      setMessages((prev) => {
+        const updated = prev.filter((m) => m.id !== activeId);
+        persistMessages(updated);
+        return updated;
+      });
+      activeStreamMessageIdRef.current = null;
+    }
+    toast.info("Generation stopped");
+  };
+
+  // Helper to trigger assistant response for an existing message list
+  const triggerAssistantGeneration = async (promptText: string, currentHistory: ChatMessage[]) => {
+    setThinking(true);
+    isAbortedRef.current = false;
+
+    // Glide to bottom on new prompt
+    isUserScrolledUpRef.current = false;
+    setShowScrollBottomBtn(false);
+    setUnreadDuringScroll(false);
+    requestAnimationFrame(() => {
+      smoothScrollToBottom();
+    });
+
+    try {
+      const historyPayload = currentHistory.slice(-12).map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const res = await sendChatMessage({
+        data: {
+          content: promptText,
+          model: profile?.selected_model || "gemini-4-argon",
+          displayName: profile?.display_name || undefined,
+          customInstructions: profile?.custom_instructions || DEFAULT_SYSTEM_PROMPT,
+          history: historyPayload,
+        },
+      });
+
+      if (isAbortedRef.current) {
+        setThinking(false);
+        return;
+      }
+
+      const replies: ChatMessage[] = (res?.replies as ChatMessage[]) ?? [];
+      if (replies.length > 0) {
+        for (const reply of replies) {
+          if (isAbortedRef.current) break;
+          await streamAssistantReply(reply);
+        }
+      } else {
+        setThinking(false);
+      }
+    } catch (err) {
+      if (!isAbortedRef.current) {
+        toast.error(err instanceof Error ? err.message : "Failed to send message");
+      }
+      setThinking(false);
+    }
+  };
+
+  // Regenerate Response Handler
+  const handleRegenerate = async (messageId: string) => {
+    if (thinking || isStreamingActive) return;
+
+    const idx = messages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+
+    // Locate the preceding user message
+    let userMsg: ChatMessage | null = null;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (messages[i].role === "user") {
+        userMsg = messages[i];
+        break;
+      }
+    }
+
+    if (!userMsg) return;
+
+    // Prune the current assistant response and any following messages
+    const pruned = messages.slice(0, idx);
+    setMessages(pruned);
+    persistMessages(pruned);
+
+    await triggerAssistantGeneration(userMsg.content, pruned);
   };
 
   // Handle Edit Message Click
@@ -180,31 +361,26 @@ function ChatPage() {
     setInput("");
   };
 
-  // Send Message (Handles Normal Send, Message Edit, and AI Clear Intent)
-  const send = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = input.trim();
+  // Core Send Message function (Supports form send and edit)
+  const sendMessageWithText = async (rawText: string, editId?: string | null) => {
+    const text = rawText.trim();
     if (!text || thinking || isClearingChat) return;
 
     // Check if user is in Edit mode and hasn't made any edits
-    if (editingMessageId && text === originalEditInput.trim()) {
+    if (editId && text === originalEditInput.trim()) {
       return;
     }
 
     // Check if user is asking AI to clear/delete entire chat history
-    // CRITICAL: Analyze intent! Ignore if user is asking questions or saying "mat delete kar" / "don't delete" / "kyun delete ki"
     const isNegativeOrQuestion =
       /(mat|kyun|kyu|why|don'?t|do\s+not|never|not|nahi|nahin|na\b|kyon|kya|what|how|मत|क्यों|नहीं|ना|क्या|किसलिए)/i.test(
         text,
       );
 
     const isExplicitClearCommand =
-      // Matches ANY phrase containing a clear action (clear, delete, erase, clean, remove, reset, hata, uda, saaf, डिलीट, हटा, साफ़, उड़ा, क्लियर)
-      // AND a chat entity (chat, history, conversation, message, baatein, चैट, बातें, मैसेज, हिस्ट्री)
       /^(?=.*(clear|delete|erase|clean|remove|reset|hata|uda|saaf|डिलीट|हटा|साफ़|उड़ा|क्लियर))(?=.*(chat|history|conversation|message|baatein|चैट|बातें|मैसेज|हिस्ट्री)).*$/i.test(
         text,
       ) ||
-      // Or direct slash/keyword commands
       /^\/?(clear|reset)$/i.test(text) ||
       /^(nayi|new)\s*chat/i.test(text);
 
@@ -219,11 +395,10 @@ function ChatPage() {
 
     let nextMessages: ChatMessage[] = [];
 
-    if (editingMessageId) {
+    if (editId) {
       // Find edited message index
-      const editIdx = messages.findIndex((m) => m.id === editingMessageId);
+      const editIdx = messages.findIndex((m) => m.id === editId);
       if (editIdx !== -1) {
-        // Truncate messages after this point and update the content
         nextMessages = messages.slice(0, editIdx + 1).map((m, idx) => {
           if (idx === editIdx) {
             return { ...m, content: text };
@@ -254,37 +429,13 @@ function ChatPage() {
 
     setMessages(nextMessages);
     persistMessages(nextMessages);
-    setThinking(true);
-    scrollToBottom(true, "center");
 
-    try {
-      const historyPayload = nextMessages.slice(-12).map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+    await triggerAssistantGeneration(text, nextMessages);
+  };
 
-      const res = await sendChatMessage({
-        data: {
-          content: text,
-          model: profile?.selected_model || "gemini-4-argon",
-          displayName: profile?.display_name || undefined,
-          customInstructions: profile?.custom_instructions || DEFAULT_SYSTEM_PROMPT,
-          history: historyPayload,
-        },
-      });
-
-      const replies: ChatMessage[] = (res?.replies as ChatMessage[]) ?? [];
-      if (replies.length > 0) {
-        for (const reply of replies) {
-          await streamAssistantReply(reply);
-        }
-      } else {
-        setThinking(false);
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to send message");
-      setThinking(false);
-    }
+  const send = (e: React.FormEvent) => {
+    e.preventDefault();
+    void sendMessageWithText(input, editingMessageId);
   };
 
   if (loading || !session) {
@@ -313,6 +464,7 @@ function ChatPage() {
 
   const isEditUnchanged = editingMessageId ? input.trim() === originalEditInput.trim() : false;
   const isSendDisabled = !input.trim() || isEditUnchanged || thinking || isClearingChat;
+  const isGenerating = thinking || isStreamingActive;
 
   return (
     <main className="chat-canvas-bg flex h-dvh flex-col bg-background relative overflow-hidden">
@@ -402,8 +554,10 @@ function ChatPage() {
         </button>
       </header>
 
-      {/* Messages Scroll Area */}
+      {/* Messages Scroll Area (no scroll-smooth in container to prevent scroll fight/jitter!) */}
       <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
         className="no-scrollbar flex-1 space-y-3.5 overflow-y-auto px-3.5 py-4"
         style={{
           WebkitMaskImage:
@@ -425,18 +579,41 @@ function ChatPage() {
               </h2>
             </div>
             <p className="text-muted-foreground mt-2 text-sm leading-relaxed max-w-xs mx-auto font-medium">
-              Say anything, ask doubts, explore YouTube, or tell Aarambh to clear chat anytime...
+              Say anything, ask doubts, explore anime & movies, or tell Aarambh to clear chat
+              anytime...
             </p>
           </div>
         ) : null}
 
-        {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} onEdit={handleEditMessage} />
+        {messages.map((m, idx) => (
+          <MessageBubble
+            key={m.id}
+            message={m}
+            previousMessage={idx > 0 ? messages[idx - 1] : undefined}
+            onEdit={handleEditMessage}
+            onRegenerate={handleRegenerate}
+          />
         ))}
 
         {thinking ? <TypingBubble /> : null}
         <div ref={bottomRef} className="h-28 shrink-0 pointer-events-none" />
       </div>
+
+      {/* Floating Jump to Latest Button when User is Scrolled Up */}
+      {showScrollBottomBtn && (
+        <button
+          type="button"
+          onClick={smoothScrollToBottom}
+          className="fixed bottom-24 right-4 sm:right-6 z-30 flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-slate-900/95 text-white dark:bg-white dark:text-slate-900 text-xs font-bold shadow-xl hover:scale-105 active:scale-95 transition-all border border-white/20 dark:border-slate-800/20 backdrop-blur-md cursor-pointer animate-in fade-in slide-in-from-bottom-2 duration-150"
+          aria-label="Scroll to latest messages"
+        >
+          <ArrowDown className="size-3.5 stroke-[2.5]" />
+          <span>Latest</span>
+          {unreadDuringScroll && (
+            <span className="size-2 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
+          )}
+        </button>
+      )}
 
       {/* Input Bar & Editing Banner */}
       <div className="bg-background/80 sticky bottom-0 z-20 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl">
@@ -471,15 +648,31 @@ function ChatPage() {
               placeholder="Say anything or ask Aarambh..."
               className="w-full bg-transparent py-2.5 text-[15px] sm:text-[16px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none font-medium"
             />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={isSendDisabled}
-              className="size-9.5 shrink-0 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 active:scale-90 transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-              aria-label="Send message"
-            >
-              <SendHorizontal className="size-4" />
-            </Button>
+
+            {isGenerating ? (
+              /* Stop Generation Button */
+              <Button
+                type="button"
+                size="icon"
+                onClick={handleStopGeneration}
+                className="size-9.5 shrink-0 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90 active:scale-90 transition-all cursor-pointer shadow-xs"
+                aria-label="Stop generating"
+                title="Stop generating"
+              >
+                <Square className="size-3.5 fill-current" />
+              </Button>
+            ) : (
+              /* Send Message Button */
+              <Button
+                type="submit"
+                size="icon"
+                disabled={isSendDisabled}
+                className="size-9.5 shrink-0 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 active:scale-90 transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                aria-label="Send message"
+              >
+                <SendHorizontal className="size-4" />
+              </Button>
+            )}
           </form>
           <p className="text-center text-[11px] text-muted-foreground/70 mt-1.5 select-none hidden sm:block font-medium">
             Aarambh can make mistakes. Verify important info.

@@ -78,15 +78,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         name: "viewport",
         content: "width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1",
       },
-      { title: "AI Agent — Private AI Chat" },
+      { title: "तत्व AI — Private AI Chat" },
       {
         name: "description",
-        content: "A private, intelligent AI chat agent with local storage.",
+        content:
+          "A private, intelligent AI chat agent with local storage and deep reasoning capabilities.",
       },
-      { property: "og:title", content: "AI Agent" },
+      { property: "og:title", content: "तत्व AI" },
       {
         property: "og:description",
-        content: "A private, intelligent AI chat agent with local storage.",
+        content:
+          "A private, intelligent AI chat agent with local storage and deep reasoning capabilities.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

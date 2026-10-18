@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Copy, Check, ExternalLink, Pencil, Loader2 } from "lucide-react";
+import { Copy, Check, ExternalLink, Pencil, RotateCcw } from "lucide-react";
 import { LEOMA_IDENTITY } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import {
@@ -18,6 +18,8 @@ import { YouTubeVideoCard } from "@/components/chat/YouTubeVideoCard";
 import { YouTubeChannelCard } from "@/components/chat/YouTubeChannelCard";
 import { YouTubeIcon } from "@/components/chat/YouTubeLogo";
 import { InstagramCard, TelegramCard } from "@/components/chat/SocialContactCard";
+import { TMDBMediaCards } from "@/components/chat/TMDBMovieCard";
+import { findBestTMDBMatch, extractMediaSearchQueries, type TMDBMediaItem } from "@/lib/tmdb";
 
 export type ChatMessage = {
   id: string;
@@ -25,6 +27,8 @@ export type ChatMessage = {
   content: string;
   created_at: string;
   isStreaming?: boolean;
+  isAborted?: boolean;
+  tmdbItems?: TMDBMediaItem[];
 };
 
 function formatMathSymbols(text: string): string {
@@ -41,28 +45,15 @@ function formatMathSymbols(text: string): string {
   str = str.replace(/\\leq\b/g, "≤");
   str = str.replace(/\\geq\b/g, "≥");
   str = str.replace(/\\infty\b/g, "∞");
-  str = str.replace(/\\pi\b/g, "π");
-  str = str.replace(/\\theta\b/g, "θ");
   str = str.replace(/\\alpha\b/g, "α");
   str = str.replace(/\\beta\b/g, "β");
+  str = str.replace(/\\theta\b/g, "θ");
+  str = str.replace(/\\pi\b/g, "π");
   str = str.replace(/\\Delta\b/g, "Δ");
-  str = str.replace(/\\sum\b/g, "∑");
-  str = str.replace(/\\int\b/g, "∫");
-  str = str.replace(/\\quad\b/g, "   ");
-  str = str.replace(/\\qquad\b/g, "      ");
-  str = str.replace(/\\text\{([^{}]+)\}/g, "$1");
-  str = str.replace(/\\mathbf\{([^{}]+)\}/g, "$1");
-  str = str.replace(/\\mathit\{([^{}]+)\}/g, "$1");
-  str = str.replace(/\^2\b|\^\{2\}/g, "²");
-  str = str.replace(/\^3\b|\^\{3\}/g, "³");
-  str = str.replace(/\^0\b|\^\{0\}/g, "⁰");
-  str = str.replace(/\^1\b|\^\{1\}/g, "¹");
-  str = str.replace(/\^n\b|\^\{n\}/g, "ⁿ");
-  str = str.replace(/\^x\b|\^\{x\}/g, "ˣ");
+  str = str.replace(/\\Sigma\b/g, "Σ");
   return str;
 }
 
-// Custom High-Readability Gemini-Style Markdown Formatter
 function MarkdownContent({
   content,
   videoMap,
@@ -74,16 +65,25 @@ function MarkdownContent({
 }) {
   const [copiedCodeIdx, setCopiedCodeIdx] = useState<number | null>(null);
 
-  const handleCopyCode = (codeText: string, idx: number) => {
-    void navigator.clipboard?.writeText(codeText);
+  const handleCopyCode = (code: string, idx: number) => {
+    void navigator.clipboard?.writeText(code);
     setCopiedCodeIdx(idx);
     setTimeout(() => setCopiedCodeIdx(null), 2000);
   };
 
   const elements = useMemo(() => {
+    // Strip raw HTML color tags if any model attempts to output them
     const cleanContent = content
+      .replace(
+        /<\/?(?:red|green|yellow|blue|purple|orange|pink|cyan|emerald|amber|rose)[^>]*>/gi,
+        "",
+      )
+      .replace(/\[\/?(?:red|green|yellow|blue|purple|orange|pink|cyan|emerald|amber|rose)\]/gi, "")
       .replace(/https?:\/\/googleusercontent\.com\/[^\s)]+/gi, "")
-      .replace(/\[([^\]]+)\]\s*\n\s*\((https?:\/\/[^\s)]+)\)/g, "[$1]($2)");
+      .replace(/\[([^\]]+)\]\s*\n\s*\((https?:\/\/[^\s)]+)\)/g, "[$1]($2)")
+      .replace(/\*\*(https?:\/\/[^\s*]+)\*\*/g, "$1")
+      .replace(/\*\*\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)\*\*/g, "[$1]($2)")
+      .replace(/\[\*\*([^*]+)\*\*\]\((https?:\/\/[^\s)]+)\)/g, "[$1]($2)");
 
     const lines = cleanContent.split("\n");
     const parsedElements: React.ReactNode[] = [];
@@ -97,7 +97,7 @@ function MarkdownContent({
       const tokens: React.ReactNode[] = [];
 
       const regex =
-        /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*.*?\*\*|`.*?`|\$[^$]+?\$|\*[^\s*][^*]*[^\s*]\*|@umang\.dl|@Umangexe|(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^\s]*&)?v=|shorts\/|embed\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}(?:[^\s<>"')]*)|(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:channel\/UC[a-zA-Z0-9_-]{22}|@[a-zA-Z0-9_.-]+|c\/[a-zA-Z0-9_.-]+)(?:[^\s<>"')]*)|https?:\/\/[^\s<>"')]+)/g;
+        /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*.*?\*\*|`.*?`|\$[^$]+?\$|\*[^\s*][^*]*[^\s*]\*|@umang\.dl|@Umangexe|(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^\s]*&)?v=|shorts\/|embed\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}(?:[^\s<>"')]*)|(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:channel\/UC[a-zA-Z0-9_-]{22}|@[a-zA-Z0-9_.-]+|c\/[a-zA-Z0-9_.-]+)(?:[^\s<>"')]*)|https?:\/\/[^\s<>"')]+)/gi;
 
       let lastIdx = 0;
       let match: RegExpExecArray | null;
@@ -112,7 +112,8 @@ function MarkdownContent({
         if (token.startsWith("[") && token.includes("](") && token.endsWith(")")) {
           const linkMatch = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
           if (linkMatch) {
-            const label = linkMatch[1];
+            const rawLabel = linkMatch[1] || "";
+            const label = rawLabel.replace(/^\*\*|\*\*$/g, "").trim();
             const targetUrl = linkMatch[2];
 
             if (isYouTubeVideoUrl(targetUrl)) {
@@ -124,59 +125,19 @@ function MarkdownContent({
               tokens.push(
                 <a
                   key={match.index}
-                  href={targetUrl}
+                  href={`https://www.youtube.com/watch?v=${videoId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-muted/60 hover:bg-muted text-foreground font-bold text-[13px] sm:text-[13.5px] transition-all border border-border/60 align-middle shadow-2xs group/yt no-underline min-w-0"
-                  title={`Watch "${displayTitle}" on YouTube`}
+                  title={video?.title ? `Watch "${video.title}" on YouTube` : "Watch on YouTube"}
                 >
-                  {chAvatar ? (
+                  <YouTubeIcon className="size-4 shrink-0" />
+                  {chAvatar && (
                     <img
                       src={chAvatar}
                       alt=""
-                      className="size-4 rounded-full object-cover shrink-0"
+                      className="size-3.5 rounded-full object-cover shrink-0"
                     />
-                  ) : (
-                    <span className="size-4 rounded-full bg-red-600 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
-                      {(video?.channelTitle || displayTitle).charAt(0).toUpperCase()}
-                    </span>
-                  )}
-                  <span className="underline decoration-border group-hover/yt:decoration-foreground font-bold max-w-[200px] sm:max-w-[360px] truncate">
-                    {displayTitle}
-                  </span>
-                  <ExternalLink className="size-3 text-muted-foreground shrink-0 opacity-80 group-hover/yt:opacity-100" />
-                </a>,
-              );
-              lastIdx = regex.lastIndex;
-              continue;
-            }
-
-            if (isYouTubeChannelUrl(targetUrl)) {
-              const chInfo = getYouTubeChannelKey(targetUrl);
-              const key = chInfo?.key.toLowerCase();
-              const channel = key && channelMap ? channelMap[key] : undefined;
-              const displayTitle = channel?.title || label || "YouTube Channel";
-              const chAvatar = channel?.avatarUrl;
-
-              tokens.push(
-                <a
-                  key={match.index}
-                  href={targetUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-muted/60 hover:bg-muted text-foreground font-bold text-[13px] sm:text-[13.5px] transition-all border border-border/60 align-middle shadow-2xs group/yt no-underline min-w-0"
-                  title={`Visit "${displayTitle}" on YouTube`}
-                >
-                  {chAvatar ? (
-                    <img
-                      src={chAvatar}
-                      alt=""
-                      className="size-4 rounded-full object-cover shrink-0"
-                    />
-                  ) : (
-                    <span className="size-4 rounded-full bg-red-600 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
-                      {displayTitle.charAt(0).toUpperCase()}
-                    </span>
                   )}
                   <span className="underline decoration-border group-hover/yt:decoration-foreground font-bold max-w-[200px] sm:max-w-[360px] truncate">
                     {displayTitle}
@@ -207,19 +168,21 @@ function MarkdownContent({
 
         // 2. Bold text
         if (token.startsWith("**") && token.endsWith("**")) {
-          tokens.push(
-            <strong
-              key={match.index}
-              className="font-bold text-slate-950 dark:text-white font-poppins"
-            >
-              {token.slice(2, -2)}
-            </strong>,
-          );
+          const innerBold = token.slice(2, -2).trim();
+          if (isYouTubeVideoUrl(innerBold) || isYouTubeChannelUrl(innerBold)) {
+            tokens.push(renderInline(innerBold));
+          } else {
+            tokens.push(
+              <strong key={match.index} className="font-bold text-slate-950 dark:text-white">
+                {renderInline(innerBold)}
+              </strong>,
+            );
+          }
         } else if (token.startsWith("`") && token.endsWith("`")) {
           tokens.push(
             <code
               key={match.index}
-              className="rounded-md bg-black/[0.08] dark:bg-white/[0.12] text-indigo-600 dark:text-indigo-400 font-mono text-[13.5px] px-1.5 py-0.5 font-bold"
+              className="rounded-md bg-black/[0.08] dark:bg-white/[0.12] text-indigo-600 dark:text-indigo-400 font-mono text-[13px] px-1.5 py-0.5 font-bold"
             >
               {token.slice(1, -1)}
             </code>,
@@ -247,7 +210,7 @@ function MarkdownContent({
               href="https://instagram.com/umang.dl"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-lg bg-gradient-to-r from-[#f09433]/20 via-[#dc2743]/20 to-[#bc1888]/20 text-pink-600 dark:text-pink-400 font-bold text-[13px] border border-pink-500/30 hover:border-pink-500/60 transition-all no-underline align-baseline"
+              className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-lg bg-pink-500/10 text-pink-600 dark:text-pink-400 font-bold text-[13px] border border-pink-500/30 hover:border-pink-500/60 transition-all no-underline align-baseline"
             >
               <span>@umang.dl</span>
               <ExternalLink className="size-2.5" />
@@ -261,7 +224,7 @@ function MarkdownContent({
               href="https://t.me/Umangexe"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-lg bg-[#229ED9]/15 text-[#229ED9] dark:text-sky-400 font-bold text-[13px] border border-sky-500/30 hover:border-sky-500/60 transition-all no-underline align-baseline"
+              className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-lg bg-[#229ED9]/15 text-[#229ED9] font-bold text-[13px] border border-[#229ED9]/30 hover:border-[#229ED9]/60 transition-all no-underline align-baseline"
             >
               <span>@Umangexe</span>
               <ExternalLink className="size-2.5" />
@@ -379,6 +342,7 @@ function MarkdownContent({
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i] ?? "";
 
+      // 1. Code Block
       if (line.trim().startsWith("```")) {
         if (!inCodeBlock) {
           inCodeBlock = true;
@@ -427,7 +391,71 @@ function MarkdownContent({
         continue;
       }
 
-      // Block Math Equation
+      // 2. Horizontal Rule Divider (--- or ***)
+      if (/^\s*[-*_]{3,}\s*$/.test(line)) {
+        parsedElements.push(<hr key={`hr-${i}`} className="my-4 border-t border-border/70" />);
+        continue;
+      }
+
+      // 3. Markdown Table (Style B Quick Matrix)
+      if (line.trim().startsWith("|") && line.trim().endsWith("|")) {
+        const tableLines = [line.trim()];
+        while (
+          i + 1 < lines.length &&
+          lines[i + 1]?.trim().startsWith("|") &&
+          lines[i + 1]?.trim().endsWith("|")
+        ) {
+          i++;
+          tableLines.push(lines[i]!.trim());
+        }
+
+        if (tableLines.length >= 2) {
+          const headerRow = tableLines[0]
+            .split("|")
+            .slice(1, -1)
+            .map((c) => c.trim());
+          const hasSeparator = /^\|(?:\s*:?-+:?\s*\|)+$/.test(tableLines[1]);
+          const dataRows = (hasSeparator ? tableLines.slice(2) : tableLines.slice(1)).map((r) =>
+            r
+              .split("|")
+              .slice(1, -1)
+              .map((c) => c.trim()),
+          );
+
+          parsedElements.push(
+            <div
+              key={`tbl-${i}`}
+              className="my-3 overflow-x-auto rounded-xl border border-border/70 bg-card/50 shadow-2xs"
+            >
+              <table className="w-full text-left text-[13.5px] sm:text-[14px] border-collapse">
+                <thead className="bg-muted/70 border-b border-border/70 text-foreground font-bold">
+                  <tr>
+                    {headerRow.map((head, hIdx) => (
+                      <th key={hIdx} className="px-3 py-2 font-bold whitespace-nowrap">
+                        {renderInline(head)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {dataRows.map((row, rIdx) => (
+                    <tr key={rIdx} className="hover:bg-muted/30 transition-colors">
+                      {row.map((cell, cIdx) => (
+                        <td key={cIdx} className="px-3 py-2 text-foreground/90 font-medium">
+                          {renderInline(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>,
+          );
+          continue;
+        }
+      }
+
+      // 4. Block Math Equation
       if (/^\s*(\$\$|\\\[)/.test(line) || /(\$\$|\\\])\s*$/.test(line)) {
         const mathContent = formatMathSymbols(
           line.replace(/^\s*(\$\$|\\\[)|(\$\$|\\\])\s*$/g, "").trim(),
@@ -445,27 +473,83 @@ function MarkdownContent({
         }
       }
 
-      // Headers (#, ##, ###, ####, #####, ######)
-      if (/^#{1,6}\s*/.test(line)) {
-        const text = line.replace(/^#{1,6}\s*/, "");
+      // 5. Final Answer / Key Result Highlight Box
+      if (
+        /^\s*\*\*(?:Final Answer|Answer|Result|Conclusion):/i.test(line) ||
+        /^\s*(?:Final Answer|Answer|Result|Conclusion):/i.test(line)
+      ) {
         parsedElements.push(
           <div
-            key={`header-${i}`}
-            className="font-bold text-[17.5px] sm:text-[18.5px] mt-4 mb-2 text-slate-950 dark:text-white tracking-tight leading-snug font-poppins"
+            key={`final-ans-${i}`}
+            className="my-3 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-950 dark:text-emerald-100 font-semibold shadow-xs"
           >
-            {renderInline(text)}
+            {renderInline(line)}
           </div>,
         );
         continue;
       }
 
-      // Bullet points
+      // 6. Blockquotes for Insights (> **Pro Tip:** ...)
+      if (/^\s*>\s*/.test(line)) {
+        const quoteText = line.replace(/^\s*>\s*/, "");
+        parsedElements.push(
+          <blockquote
+            key={`quote-${i}`}
+            className="my-2.5 pl-3.5 py-1.5 border-l-3 border-primary/70 bg-primary/5 rounded-r-xl text-[14.5px] sm:text-[15px] leading-relaxed text-foreground font-medium italic"
+          >
+            {renderInline(quoteText)}
+          </blockquote>,
+        );
+        continue;
+      }
+
+      // 7. Ignore empty hash-only lines (e.g. "##", "###", "## ##")
+      if (/^[\s#]+$/.test(line)) {
+        continue;
+      }
+
+      // 8. Headers (#, ##, ###) - clean, bold, zero # leakage
+      if (/^\s*#+/.test(line)) {
+        const cleanHeader = line
+          .replace(/^[\s#]+/, "")
+          .replace(/[\s#]+$/, "")
+          .trim();
+
+        if (!cleanHeader) {
+          continue;
+        }
+
+        const isH3 = /^\s*#{3,}/.test(line);
+
+        if (isH3) {
+          parsedElements.push(
+            <h3
+              key={`h3-${i}`}
+              className="font-extrabold text-[16.5px] sm:text-[17.5px] mt-4 mb-2 text-foreground tracking-tight leading-snug"
+            >
+              {renderInline(cleanHeader)}
+            </h3>,
+          );
+        } else {
+          parsedElements.push(
+            <h2
+              key={`h2-${i}`}
+              className="font-black text-[18px] sm:text-[20px] mt-5 mb-2.5 pb-1 border-b border-border/50 text-foreground tracking-tight leading-snug"
+            >
+              {renderInline(cleanHeader)}
+            </h2>,
+          );
+        }
+        continue;
+      }
+
+      // 9. Bullet points (* **The Hook:** ... or - ...)
       if (/^(\s*[-*•])\s+/.test(line)) {
         const text = line.replace(/^(\s*[-*•])\s+/, "");
         parsedElements.push(
-          <div key={`bullet-${i}`} className="flex items-start gap-2.5 my-2 pl-0.5">
-            <span className="text-red-500 mt-2.5 size-2 rounded-full bg-red-500 shrink-0 shadow-xs" />
-            <div className="flex-1 leading-[1.7] text-slate-950 dark:text-zinc-50 font-normal sm:font-normal text-[15.5px] sm:text-[16px]">
+          <div key={`bullet-${i}`} className="flex items-start gap-2.5 my-1.5 pl-0.5">
+            <span className="mt-2.5 size-1.5 rounded-full bg-primary shrink-0 shadow-2xs" />
+            <div className="flex-1 leading-[1.7] text-slate-950 dark:text-zinc-50 font-normal text-[15px] sm:text-[15.5px]">
               {renderInline(text)}
             </div>
           </div>,
@@ -473,16 +557,16 @@ function MarkdownContent({
         continue;
       }
 
-      // Numbered lists
+      // 10. Numbered lists (1., 2.)
       if (/^\s*\d+\.\s+/.test(line)) {
         const matchNum = line.match(/^\s*(\d+)\.\s+(.*)/);
         if (matchNum) {
           parsedElements.push(
-            <div key={`num-${i}`} className="flex items-start gap-2.5 my-2 pl-0.5">
-              <span className="font-bold text-red-500 shrink-0 text-[15px] mt-0.5">
+            <div key={`num-${i}`} className="flex items-start gap-2.5 my-1.5 pl-0.5">
+              <span className="font-bold text-primary shrink-0 text-[14.5px] mt-0.5">
                 {matchNum[1]}.
               </span>
-              <div className="flex-1 leading-[1.7] text-slate-950 dark:text-zinc-50 font-normal sm:font-normal text-[15.5px] sm:text-[16px]">
+              <div className="flex-1 leading-[1.7] text-slate-950 dark:text-zinc-50 font-normal text-[15px] sm:text-[15.5px]">
                 {renderInline(matchNum[2] || "")}
               </div>
             </div>,
@@ -496,10 +580,11 @@ function MarkdownContent({
         continue;
       }
 
+      // Standard Paragraph
       parsedElements.push(
         <div
           key={`para-${i}`}
-          className="leading-[1.7] text-slate-950 dark:text-zinc-50 font-normal sm:font-normal text-[15.5px] sm:text-[16px] my-1"
+          className="leading-[1.7] text-slate-950 dark:text-zinc-50 font-normal text-[15px] sm:text-[15.5px] my-1"
         >
           {renderInline(line)}
         </div>,
@@ -514,13 +599,56 @@ function MarkdownContent({
 
 export function MessageBubble({
   message,
+  previousMessage,
   onEdit,
+  onRegenerate,
 }: {
   message: ChatMessage;
+  previousMessage?: ChatMessage;
   onEdit?: (m: ChatMessage) => void;
+  onRegenerate?: (messageId: string) => void;
 }) {
   const mine = message.role === "user";
   const [copied, setCopied] = useState(false);
+
+  // TMDB movie extraction: includes verified backend items and auto-extracted titles
+  const [tmdbItems, setTmdbItems] = useState<TMDBMediaItem[]>(message.tmdbItems || []);
+  const mediaQueries = useMemo(() => {
+    if (message.role !== "assistant") return [];
+    return extractMediaSearchQueries(message.content, previousMessage?.content);
+  }, [message.content, message.role, previousMessage?.content]);
+
+  useEffect(() => {
+    if (message.tmdbItems && message.tmdbItems.length > 0) {
+      setTmdbItems(message.tmdbItems);
+    }
+  }, [message.tmdbItems]);
+
+  useEffect(() => {
+    if (mediaQueries.length === 0) return;
+    let active = true;
+
+    const runSearch = async () => {
+      const items: TMDBMediaItem[] = [...(message.tmdbItems || [])];
+      for (const q of mediaQueries) {
+        if (!active) break;
+        if (items.some((it) => it.title.toLowerCase() === q.query.toLowerCase())) continue;
+        const matched = await findBestTMDBMatch(q.query, q.year, q.isAnime);
+        if (matched && !items.some((it) => it.id === matched.id)) {
+          items.push(matched);
+        }
+      }
+      if (active && items.length > 0) {
+        setTmdbItems(items);
+      }
+    };
+
+    void runSearch();
+
+    return () => {
+      active = false;
+    };
+  }, [mediaQueries, message.tmdbItems]);
 
   // YouTube video extraction and live details fetching
   const [videoMap, setVideoMap] = useState<Record<string, YouTubeVideoDetails>>({});
@@ -575,7 +703,7 @@ export function MessageBubble({
   return (
     <div className={cn("px-4 my-4 transition-colors", mine ? "flex justify-end" : "block")}>
       {mine ? (
-        /* Gemini Style User Message: Soft Pill Capsule on Right */
+        /* Clean User Message */
         <div className="flex flex-col items-end max-w-[85%] sm:max-w-[75%] group/user">
           <div className="rounded-[22px] bg-[#f0f4f9] dark:bg-[#282a2c] text-slate-900 dark:text-zinc-100 px-5 py-3 text-[15px] sm:text-[16px] font-normal leading-[1.6] break-words shadow-xs select-text">
             <MarkdownContent
@@ -647,7 +775,7 @@ export function MessageBubble({
             </span>
           </div>
 
-          <div className="text-slate-950 dark:text-zinc-50 text-[15.5px] sm:text-[16px] leading-[1.7] break-words pl-8">
+          <div className="text-slate-950 dark:text-zinc-50 text-[15px] sm:text-[15.5px] leading-[1.7] break-words pl-8">
             <MarkdownContent
               content={message.content}
               videoMap={videoMap}
@@ -656,6 +784,9 @@ export function MessageBubble({
             {message.isStreaming && (
               <span className="inline-block size-2 ml-1 rounded-full bg-primary animate-pulse align-middle" />
             )}
+
+            {/* TMDB Movie & Anime Posters for explicitly recommended titles (Opens directly on TMDB) */}
+            {tmdbItems.length > 0 && <TMDBMediaCards items={tmdbItems} />}
 
             {/* YouTube Video Details Preview Cards at the bottom */}
             {videoIds.length > 0 && (
@@ -682,8 +813,8 @@ export function MessageBubble({
             {hasInstagramMention && <InstagramCard />}
             {hasTelegramMention && <TelegramCard />}
 
-            {/* Action Row: Copy button (Edit button removed for AI responses) */}
-            <div className="flex items-center gap-2 mt-4 text-muted-foreground">
+            {/* Action Row: Copy button & Regenerate button */}
+            <div className="flex items-center gap-2.5 mt-4 text-muted-foreground flex-wrap">
               <button
                 type="button"
                 onClick={handleCopyMessage}
@@ -696,6 +827,24 @@ export function MessageBubble({
                   <Copy className="size-4" />
                 )}
               </button>
+
+              {onRegenerate && !message.isStreaming && (
+                <button
+                  type="button"
+                  onClick={() => onRegenerate(message.id)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full hover:bg-secondary active:scale-95 transition-all cursor-pointer text-muted-foreground hover:text-foreground text-xs font-semibold"
+                  title="Regenerate this response"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Regenerate</span>
+                </button>
+              )}
+
+              {message.isAborted && (
+                <span className="text-[11px] font-medium text-amber-500/90 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full select-none">
+                  Generation stopped
+                </span>
+              )}
             </div>
 
             {/* Disclaimer */}

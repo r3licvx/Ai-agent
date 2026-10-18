@@ -1,6 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { CUSTOM_ENDPOINT, CUSTOM_API_KEY, DEFAULT_SYSTEM_PROMPT } from "@/lib/constants";
+import {
+  fetchTMDBTrending,
+  findBestTMDBMatch,
+  extractQueriedMediaFromUserPrompt,
+  type TMDBMediaItem,
+} from "@/lib/tmdb";
 
 const InputSchema = z.object({
   content: z.string().default(""),
@@ -29,13 +35,83 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     const userPrompt = data.content.trim();
     const systemInstruction = data.customInstructions?.trim() || DEFAULT_SYSTEM_PROMPT;
 
+    // Detect if user query is inquiring about trending movies/series, top movies, or specific titles
+    const isTrendingQuery =
+      /(?:trending|ट्रेन्डिंग|ट्रेंडिंग|popular|top movies|top 5|top 10|best movies|नई फिल्में|हालिया फिल्में|आज की ट्रेंडिंग|आज ट्रेंडिंग|trending movies|trending series|what to watch|आज की मूवी|पांच मूवी|टॉप मूवी)/i.test(
+        userPrompt,
+      );
+
+    let groundedTMDBItems: TMDBMediaItem[] = [];
+
+    if (isTrendingQuery) {
+      try {
+        groundedTMDBItems = await fetchTMDBTrending("all", "day");
+      } catch (err) {
+        console.warn("Failed fetching trending TMDB for AI grounding:", err);
+      }
+    } else {
+      const queriedTitle = extractQueriedMediaFromUserPrompt(userPrompt);
+      if (queriedTitle && queriedTitle.query) {
+        try {
+          const best = await findBestTMDBMatch(queriedTitle.query, undefined, queriedTitle.isAnime);
+          if (best) {
+            groundedTMDBItems.push(best);
+          }
+        } catch (err) {
+          console.warn("Failed fetching matched title for AI grounding:", err);
+        }
+      }
+    }
+
+    let tmdbGroundingPrompt = "";
+    if (groundedTMDBItems.length > 0) {
+      const formattedItems = groundedTMDBItems
+        .slice(0, 8)
+        .map((item, idx) => {
+          const typeLabel =
+            item.mediaType === "tv"
+              ? item.isAnime
+                ? "Anime Series"
+                : "Web Series"
+              : item.isAnime
+                ? "Anime Film"
+                : item.isAnimation
+                  ? "Animation"
+                  : "Movie";
+          return `${idx + 1}. Title: ${item.title} (${item.year || "N/A"})
+- Media Type: ${typeLabel}
+- TMDB Rating: ⭐ ${item.voteAverage}/10 (${item.voteCount} votes)
+- Key Cast: ${item.cast && item.cast.length > 0 ? item.cast.join(", ") : "Available on TMDB"}
+- Director/Creator: ${item.directors && item.directors.length > 0 ? item.directors.join(", ") : "Available on TMDB"}
+- Official YouTube Trailer: ${item.trailerUrl || "None"}
+- Synopsis: ${item.overview.slice(0, 160)}...`;
+        })
+        .join("\n\n");
+
+      tmdbGroundingPrompt = `\n\n### ⚡ VERIFIED REAL-TIME TMDB DATABASE GROUNDING ⚡
+Here is the 100% verified live TMDB data matching the user's inquiry:
+
+${formattedItems}
+
+MANDATORY INSTRUCTIONS FOR AARAMBH:
+1. Base your recommendations or explanations directly on these verified TMDB titles.
+2. For each title, use the clean Curated Showcase format:
+### [Index]. [Official English Title] ([Year])
+* **The Hook:** [Crisp 1-line hook capturing the essence]
+* **Cast & Crew:** [Mention the verified actors and directors from above]
+* **Verdict:** ⭐ [Rating]/10
+${groundedTMDBItems.some((i) => i.trailerUrl) ? "* **Official Trailer:** [Include the verified YouTube trailer URL from above]" : ""}
+3. NEVER make up fake or expired YouTube links. ONLY use the verified trailer URLs provided above or omit if none.
+4. The user interface will automatically display verified posters, ratings, and YouTube trailer cards underneath your message.`;
+    }
+
     const priorMsgs: ChatMsg[] = (data.history || []).map((m) => ({
       role: m.role === "assistant" ? "assistant" : "user",
       content: m.content,
     }));
 
     const messages: ChatMsg[] = [
-      { role: "system", content: systemInstruction },
+      { role: "system", content: `${systemInstruction}${tmdbGroundingPrompt}` },
       ...(data.displayName
         ? [{ role: "system" as const, content: `User's Name: ${data.displayName}` }]
         : []),
@@ -120,6 +196,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         role: "assistant" as const,
         content: replyContent,
         created_at: new Date().toISOString(),
+        tmdbItems: groundedTMDBItems.length > 0 ? groundedTMDBItems : undefined,
       };
 
       const userRow = {
@@ -162,6 +239,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         role: "assistant" as const,
         content: fallbackText,
         created_at: new Date().toISOString(),
+        tmdbItems: groundedTMDBItems.length > 0 ? groundedTMDBItems : undefined,
       };
 
       return {

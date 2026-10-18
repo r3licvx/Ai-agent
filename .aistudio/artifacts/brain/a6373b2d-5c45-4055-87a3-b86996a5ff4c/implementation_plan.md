@@ -16,6 +16,7 @@ Comprehensive implementation plan to refine response action buttons, extend inte
 ## 1. Overview & Core Concept
 
 **Aarambh** is a Gen Z backbencher Indian college student AI companion. This update addresses user experience nuances:
+
 1. **Clean Action Row**: Users only edit their own prompts, not AI outputs. The AI message footer will feature a clean Copy button and disclaimer.
 2. **Intent-Driven Chat Reset**: Natural language prompts requesting chat clearing or deletion will trigger the smooth clearing overlay immediately.
 3. **Resilient AI Pipeline**: API calls will no longer hang indefinitely. A 20-second timeout ensures fast feedback, and safety/error responses will stay in character as a witty backbencher friend rather than outputting sterile corporate error blocks.
@@ -25,8 +26,8 @@ Comprehensive implementation plan to refine response action buttons, extend inte
 ## 2. User Experience & Visual Design
 
 - **Message Action Bar**:
-  - *User Bubble*: Copy prompt & Edit prompt buttons.
-  - *AI Bubble*: Clean Copy response button only.
+  - _User Bubble_: Copy prompt & Edit prompt buttons.
+  - _AI Bubble_: Clean Copy response button only.
 - **Auto-Clear Overlay**:
   - When user types phrases like "sari chat uda do", "clear chat", "delete messages", "nayi chat shuru karo":
   - Immediately triggers the full-card blur loader: "Clearing Chat..." with a smooth spinner.
@@ -40,16 +41,16 @@ Comprehensive implementation plan to refine response action buttons, extend inte
 ## 3. Key Product Decisions & Trade-Offs
 
 1. **Client-Side Intent Regex Expansion**:
-   - *Chosen Approach*: Expand `isClearRequest` in `src/routes/index.tsx` to include multi-lingual patterns (English, Hindi, Hinglish).
-   - *Why*: Provides instant client-side UI feedback without waiting for an LLM API round-trip to execute a simple UI clearing action.
+   - _Chosen Approach_: Expand `isClearRequest` in `src/routes/index.tsx` to include multi-lingual patterns (English, Hindi, Hinglish).
+   - _Why_: Provides instant client-side UI feedback without waiting for an LLM API round-trip to execute a simple UI clearing action.
 
 2. **20-Second Request AbortController**:
-   - *Chosen Approach*: Wrap custom AI endpoint fetches in `src/lib/ai.functions.ts` with an `AbortController` signal timed to 20 seconds.
-   - *Why*: Eliminates infinite loading loops when remote backend hosting or upstream providers experience latency spikes.
+   - _Chosen Approach_: Wrap custom AI endpoint fetches in `src/lib/ai.functions.ts` with an `AbortController` signal timed to 20 seconds.
+   - _Why_: Eliminates infinite loading loops when remote backend hosting or upstream providers experience latency spikes.
 
 3. **In-Character Safety / Fallback Catch**:
-   - *Chosen Approach*: Intercept safety block error strings (like `"safety filters stepped in"`) in `ai.functions.ts` and replace them with natural backbencher text.
-   - *Why*: Maintains persona immersion without frustrating the user with sterile system disclaimers.
+   - _Chosen Approach_: Intercept safety block error strings (like `"safety filters stepped in"`) in `ai.functions.ts` and replace them with natural backbencher text.
+   - _Why_: Maintains persona immersion without frustrating the user with sterile system disclaimers.
 
 ---
 

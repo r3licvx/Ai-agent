@@ -210,7 +210,7 @@ function MarkdownContent({
           tokens.push(
             <strong
               key={match.index}
-              className="font-bold text-slate-950 dark:text-white drop-shadow-2xs"
+              className="font-bold text-slate-950 dark:text-white font-poppins"
             >
               {token.slice(2, -2)}
             </strong>,
@@ -445,13 +445,13 @@ function MarkdownContent({
         }
       }
 
-      // Headers
-      if (/^#{1,3}\s/.test(line)) {
-        const text = line.replace(/^#{1,3}\s+/, "");
+      // Headers (#, ##, ###, ####, #####, ######)
+      if (/^#{1,6}\s*/.test(line)) {
+        const text = line.replace(/^#{1,6}\s*/, "");
         parsedElements.push(
           <div
             key={`header-${i}`}
-            className="font-bold text-[18px] sm:text-[19px] mt-3.5 mb-2 text-slate-950 dark:text-white tracking-tight"
+            className="font-bold text-[17.5px] sm:text-[18.5px] mt-4 mb-2 text-slate-950 dark:text-white tracking-tight leading-snug font-poppins"
           >
             {renderInline(text)}
           </div>,

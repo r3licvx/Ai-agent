@@ -1,5 +1,14 @@
-import React from "react";
-import { Star, Film, Tv, ExternalLink, Clapperboard, Play } from "lucide-react";
+import React, { useRef, useState, useEffect } from "react";
+import {
+  Star,
+  Film,
+  Tv,
+  ExternalLink,
+  Clapperboard,
+  Play,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import type { TMDBMediaItem } from "@/lib/tmdb";
 
 export interface TMDBMediaCardsProps {
@@ -7,80 +16,150 @@ export interface TMDBMediaCardsProps {
 }
 
 export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 10);
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 10);
+  };
+
+  useEffect(() => {
+    checkScroll();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkScroll, { passive: true });
+    window.addEventListener("resize", checkScroll);
+    return () => {
+      el.removeEventListener("scroll", checkScroll);
+      window.removeEventListener("resize", checkScroll);
+    };
+  }, [items]);
+
+  const handleScroll = (direction: "left" | "right") => {
+    if (!scrollRef.current) return;
+    const offset = direction === "left" ? -280 : 280;
+    scrollRef.current.scrollBy({ left: offset, behavior: "smooth" });
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!scrollRef.current) return;
+    // Allow natural vertical mouse wheel to scroll horizontal strip smoothly
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && Math.abs(e.deltaY) > 5) {
+      scrollRef.current.scrollLeft += e.deltaY;
+    }
+  };
+
   if (!items || items.length === 0) return null;
 
   return (
-    <div className="my-3.5 w-full">
-      {/* Clean horizontal scroll strip with natural touch scroll, no buttons, zero empty margins */}
-      <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar scroll-smooth">
+    <div className="relative my-3.5 w-full group/strip">
+      {/* Left Scroll Button */}
+      {canScrollLeft && (
+        <button
+          type="button"
+          onClick={() => handleScroll("left")}
+          className="absolute -left-3 top-1/2 -translate-y-1/2 z-20 size-8 rounded-full bg-background/90 hover:bg-background border border-border shadow-md flex items-center justify-center text-foreground hover:scale-105 active:scale-95 transition-all cursor-pointer backdrop-blur-xs"
+          title="Scroll Left"
+          aria-label="Scroll Left"
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+      )}
+
+      {/* Right Scroll Button */}
+      {canScrollRight && (
+        <button
+          type="button"
+          onClick={() => handleScroll("right")}
+          className="absolute -right-3 top-1/2 -translate-y-1/2 z-20 size-8 rounded-full bg-background/90 hover:bg-background border border-border shadow-md flex items-center justify-center text-foreground hover:scale-105 active:scale-95 transition-all cursor-pointer backdrop-blur-xs"
+          title="Scroll Right"
+          aria-label="Scroll Right"
+        >
+          <ChevronRight className="size-4" />
+        </button>
+      )}
+
+      {/* Clean horizontal scroll strip with natural touch & wheel scroll, zero empty margins */}
+      <div
+        ref={scrollRef}
+        onWheel={handleWheel}
+        className="flex gap-3 overflow-x-auto pb-2 no-scrollbar scroll-smooth overscroll-x-contain"
+      >
         {items.map((movie) => {
           const tmdbUrl = `https://www.themoviedb.org/${movie.mediaType}/${movie.id}`;
 
           return (
-            <a
+            <div
               key={`${movie.mediaType}-${movie.id}`}
-              href={tmdbUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 w-[140px] sm:w-[155px] rounded-2xl overflow-hidden bg-card border border-border/70 shadow-xs hover:shadow-md hover:border-primary/50 transition-all duration-200 group/card flex flex-col justify-between no-underline"
-              title={`View ${movie.title} on TMDB`}
+              className="shrink-0 w-[140px] sm:w-[155px] rounded-2xl overflow-hidden bg-card border border-border/70 shadow-xs hover:shadow-md hover:border-primary/50 transition-all duration-200 group/card flex flex-col justify-between select-none"
             >
-              {/* Poster container */}
-              <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted/40">
-                {movie.posterPath ? (
-                  <img
-                    src={movie.posterPath}
-                    alt={movie.title}
-                    className="size-full object-cover group-hover/card:scale-105 transition-transform duration-300"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="size-full flex flex-col items-center justify-center p-3 text-center bg-slate-900 text-white">
-                    <Film className="size-7 text-white/40 mb-1" />
-                    <span className="text-[11px] font-bold line-clamp-2">{movie.title}</span>
-                  </div>
-                )}
-
-                {/* Rating Badge */}
-                {movie.voteAverage > 0 && (
-                  <div className="absolute top-1.5 right-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-white text-[10.5px] font-bold shadow-xs">
-                    <Star className="size-2.5 fill-amber-400 text-amber-400" />
-                    <span>{movie.voteAverage}</span>
-                  </div>
-                )}
-
-                {/* Accurate Type & Genre Badge */}
-                <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1">
-                  {movie.isAnime ? (
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-purple-600/90 backdrop-blur-md text-white text-[9.5px] font-extrabold uppercase tracking-wide shadow-2xs">
-                      {movie.mediaType === "tv" ? "Anime Series" : "Anime Film"}
-                    </span>
-                  ) : movie.isAnimation ? (
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-sky-600/90 backdrop-blur-md text-white text-[9.5px] font-bold shadow-2xs">
-                      <Clapperboard className="size-2.5" />
-                      <span>Animation</span>
-                    </span>
+              {/* Poster and Title Link (Navigates to TMDB) */}
+              <a
+                href={tmdbUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block no-underline flex-1 flex flex-col justify-between"
+                title={`View ${movie.title} on TMDB`}
+              >
+                {/* Poster container with fixed 2:3 aspect ratio preventing layout shifts */}
+                <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted/40">
+                  {movie.posterPath ? (
+                    <img
+                      src={movie.posterPath}
+                      alt={movie.title}
+                      className="size-full object-cover group-hover/card:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                    />
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-white text-[9.5px] font-semibold shadow-2xs">
-                      {movie.mediaType === "tv" ? (
-                        <>
-                          <Tv className="size-2.5 text-emerald-400" />
-                          <span>Web Series</span>
-                        </>
-                      ) : (
-                        <>
-                          <Film className="size-2.5 text-blue-400" />
-                          <span>Movie</span>
-                        </>
-                      )}
-                    </span>
+                    <div className="size-full flex flex-col items-center justify-center p-3 text-center bg-slate-900 text-white">
+                      <Film className="size-7 text-white/40 mb-1" />
+                      <span className="text-[11px] font-bold line-clamp-2">{movie.title}</span>
+                    </div>
                   )}
-                </div>
-              </div>
 
-              {/* Title & TMDB Link Bar */}
-              <div className="p-2.5 flex flex-col justify-between flex-1">
-                <div>
+                  {/* Rating Badge */}
+                  {movie.voteAverage > 0 && (
+                    <div className="absolute top-1.5 right-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-white text-[10.5px] font-bold shadow-xs">
+                      <Star className="size-2.5 fill-amber-400 text-amber-400" />
+                      <span>{movie.voteAverage}</span>
+                    </div>
+                  )}
+
+                  {/* Accurate Type & Genre Badge */}
+                  <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1">
+                    {movie.isAnime ? (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-purple-600/90 backdrop-blur-md text-white text-[9.5px] font-extrabold uppercase tracking-wide shadow-2xs">
+                        {movie.mediaType === "tv" ? "Anime Series" : "Anime Film"}
+                      </span>
+                    ) : movie.isAnimation ? (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-sky-600/90 backdrop-blur-md text-white text-[9.5px] font-bold shadow-2xs">
+                        <Clapperboard className="size-2.5" />
+                        <span>Animation</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-white text-[9.5px] font-semibold shadow-2xs">
+                        {movie.mediaType === "tv" ? (
+                          <>
+                            <Tv className="size-2.5 text-emerald-400" />
+                            <span>Web Series</span>
+                          </>
+                        ) : (
+                          <>
+                            <Film className="size-2.5 text-blue-400" />
+                            <span>Movie</span>
+                          </>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Title & Metadata */}
+                <div className="p-2.5 pb-1.5">
                   <h5 className="font-bold text-[13px] sm:text-[13.5px] text-foreground line-clamp-2 leading-snug group-hover/card:text-primary transition-colors">
                     {movie.title}
                   </h5>
@@ -89,29 +168,35 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
                     {movie.originalLanguage ? ` • ${movie.originalLanguage}` : ""}
                   </p>
                 </div>
+              </a>
 
-                <div className="mt-2 pt-1.5 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground group-hover/card:text-primary transition-colors">
-                  <span className="font-semibold">TMDB</span>
-                  {movie.trailerUrl ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        window.open(movie.trailerUrl!, "_blank", "noopener,noreferrer");
-                      }}
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-600/10 hover:bg-red-600 text-red-600 hover:text-white font-bold text-[10px] transition-all cursor-pointer"
-                      title={`Watch official trailer for ${movie.title} on YouTube`}
-                    >
-                      <Play className="size-2.5 fill-current" />
-                      <span>Trailer</span>
-                    </button>
-                  ) : (
-                    <ExternalLink className="size-3 shrink-0 opacity-70 group-hover/card:opacity-100" />
-                  )}
-                </div>
+              {/* Bottom Action Bar: TMDB & Official Trailer Links (Never nested in an anchor tag) */}
+              <div className="px-2.5 pb-2.5 pt-1.5 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
+                <a
+                  href={tmdbUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-semibold hover:text-primary transition-colors no-underline group/link"
+                  title={`View ${movie.title} on TMDB`}
+                >
+                  <span>TMDB</span>
+                  <ExternalLink className="size-3 shrink-0 opacity-70 group-hover/link:opacity-100" />
+                </a>
+
+                {movie.trailerUrl && (
+                  <a
+                    href={movie.trailerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-600/10 hover:bg-red-600 text-red-600 hover:text-white font-bold text-[10px] transition-all cursor-pointer no-underline"
+                    title={`Watch official trailer for ${movie.title} on YouTube`}
+                  >
+                    <Play className="size-2.5 fill-current" />
+                    <span>Trailer</span>
+                  </a>
+                )}
               </div>
-            </a>
+            </div>
           );
         })}
       </div>

@@ -561,10 +561,22 @@ export async function findBestTMDBMatch(
   return best;
 }
 
+// Detect if text is about study, education, academic, or non-entertainment topics
+export const STUDY_OR_ACADEMIC_REGEX =
+  /(?:study|padhai|padhna|padhe|exam|pariksha|chapter|lesson|subject|math|ganit|physics|chemistry|biology|science|history|itihas|geography|bhugol|grammar|vyakaran|formula|theorem|homework|syllabus|solution|algorithm|programming|coding|essay|nibandh|gk|upsc|jee|neet|cbse|ncert|class\s*\d+|kaksha|school|college|rules?|steps?|laws?|theor(?:y|ies)|definitions?|principles?|tips?|techniques?|alankar|sandhi|samas|muhavare|ras\s+chhand|tense|noun|pronoun|verb|adjective)/i;
+
+export const HAS_MEDIA_KEYWORDS_REGEX =
+  /(?:movie|movies|film|films|cinema|series|web\s*series|season|episode|anime|manga|actor|actress|director|box\s*office|trailer|soundtrack|मूवी|फिल्में|फिल्म|सिनेमा|सीरीज|एपिसोड|एक्टर|डायरेक्टर|ट्रेलर|थिएटर|हॉलीवुड|बॉलीवुड|एनीमे|कास्ट)/i;
+
 // Clean user prompt to extract queried media title (e.g. "Stranger Things के बारे में बताओ" -> "Stranger Things")
 export function extractQueriedMediaFromUserPrompt(userPrompt: string): MediaSearchQuery | null {
   if (!userPrompt) return null;
   const clean = userPrompt.trim();
+
+  // If user is studying, asking academic questions, or grammar without entertainment context, NEVER treat as media!
+  if (STUDY_OR_ACADEMIC_REGEX.test(clean) && !HAS_MEDIA_KEYWORDS_REGEX.test(clean)) {
+    return null;
+  }
 
   // Strip common conversational Hindi/English question prefixes and suffixes
   const candidate = clean
@@ -577,7 +589,7 @@ export function extractQueriedMediaFromUserPrompt(userPrompt: string): MediaSear
 
   // If candidate is a generic question or discovery inquiry, do NOT treat as a title!
   const isGeneric =
-    /^(?:top\s*movies?|best\s*movies?|trending\s*movies?|new\s*movies?|movies?\s*list|what\s*to\s*watch|टॉप\s*मूवी|टॉप\s*फिल्में|बेस्ट\s*मूवी|बेस्ट\s*फिल्में|मूवी\s*बताओ|फिल्में\s*बताओ|इंडिया\s*के\s*लिए|इंडिया\s*की\s*मूवी|बॉलीवुड\s*की\s*मूवी|हिंदी\s*मूवी|ट्रेन्डिंग|ट्रेंडिंग|आज\s*की\s*मूवी|पांच\s*मूवी|5\s*मूवी|10\s*मूवी|top\s*5|top\s*10|इंडिया\s*के\s*लिए\s*बेस्ट|बेस्ट\s*बताओ|टॉप\s*बताओ|best\s*बताओ)$/i.test(
+    /^(?:top\s*movies?|best\s*movies?|trending\s*movies?|new\s*movies?|movies?\s*list|what\s*to\s*watch|टॉप\s*मूवी|टॉप\s*फिल्में|बेस्ट\s*मूवी|बेस्ट\s*फिल्में|मूवी\s*बताओ|फिल्में\s*बताओ|इंडिया\s*के\s*लिए|इंडिया\s*की\s*मूवी|बॉलीवुड\s*की\s*मूवी|हिंदी\s*मूवी|ट्रेन्डिंग|ट्रेंडिंग|आज\s*की\s*मूवी|पांच\s*मूवी|5\s*मूवी|10\s*मूवी|top\s*5|top\s*10|इंडिया\s*के\s*लिए\s*बेस्ट|बेस्ट\s*बताओ|टॉप\s*बताओ|best\s*बताओ|action\s*movies?|comedy\s*movies?|horror\s*movies?|study\s*tips?|physics|math|grammar)$/i.test(
       candidate,
     );
   if (isGeneric) {
@@ -592,7 +604,13 @@ export function extractQueriedMediaFromUserPrompt(userPrompt: string): MediaSear
     }
   }
 
-  if (candidate.length >= 2 && candidate.length <= 40) {
+  // Only consider candidate if it has explicit media context or known keywords
+  const hasEntertainmentContext =
+    HAS_MEDIA_KEYWORDS_REGEX.test(clean) ||
+    /(?:show|series|season|kab aayega|kab aayegi|kaisa hai|kaisi hai|trailer)/i.test(clean) ||
+    KNOWN_ANIME_KEYWORDS.some((k) => candidate.toLowerCase().includes(k));
+
+  if (hasEntertainmentContext && candidate.length >= 2 && candidate.length <= 40) {
     const isAnime =
       /(?:anime|manga|एनीमे)/i.test(clean) ||
       KNOWN_ANIME_KEYWORDS.some((k) => candidate.toLowerCase().includes(k));
@@ -605,6 +623,20 @@ export function extractQueriedMediaFromUserPrompt(userPrompt: string): MediaSear
 // Extract recommended titles from AI output (Style A headings, tables, numbered lists, bullet lists, or bold titles)
 export function extractMediaSearchQueries(text: string, userPrompt?: string): MediaSearchQuery[] {
   if (!text && !userPrompt) return [];
+
+  // Check if either the user prompt or the AI response is actually about entertainment/media
+  const hasUserMediaIntent = userPrompt ? HAS_MEDIA_KEYWORDS_REGEX.test(userPrompt) : false;
+  const hasResponseMediaMarkers =
+    /(?:TMDB|Cast & Crew|Official Trailer|⭐\s*[0-9]|TMDB Rating|Media Type:\s*(?:Movie|Web Series|Anime)|Directed by|Key Cast|Box Office|Release Date)/i.test(
+      text,
+    ) ||
+    (/(?:Movie|Film|Web Series|Anime Series|Anime Film)/i.test(text) &&
+      /(?:⭐|Trailer|Director|Cast|Actor|Showcase)/i.test(text));
+
+  // If this message has ZERO entertainment markers or is academic/study, NEVER extract random bold words as movies!
+  if (!hasUserMediaIntent && !hasResponseMediaMarkers) {
+    return [];
+  }
 
   const queries = new Map<string, { year?: string; isAnime: boolean }>();
 
@@ -619,7 +651,7 @@ export function extractMediaSearchQueries(text: string, userPrompt?: string): Me
   }
 
   const ignoreWords =
-    /^(?:the hook|why it hits|key specs|verdict|specs|cast & crew|lead cast|director|format|style|the curated|the quick|actionable|mathematical|youtube|creator|rules|step \d+|step|note|warning|pro tip|summary|final answer|name|title|score|best for|vibe|points?|hook)$/i;
+    /^(?:the hook|why it hits|key specs|verdict|specs|cast & crew|lead cast|director|format|style|the curated|the quick|actionable|mathematical|youtube|creator|rules|step \d+|step|note|warning|pro tip|summary|final answer|name|title|score|best for|vibe|points?|hook|introduction|conclusion|overview|example|law|laws|principle|formula|definition|concept|method|solution|answer|question|chapter|lesson|part \d+|unit \d+|technique|advice|schedule|routine|recall|first|second|third|fourth|fifth|pomodoro|active recall|spaced repetition|newton|gravity|force|energy|velocity|photosynthesis|cell|respiration|atom|molecule|reaction|equation|variable|constant|function|loop|array|syntax|grammar|noun|pronoun|verb|adjective|tense|sandhi|samas|alankar|muhavare|general knowledge|current affairs)$/i;
 
   // Helper to add resolved candidate
   const addCandidate = (raw: string, year?: string) => {
@@ -658,42 +690,33 @@ export function extractMediaSearchQueries(text: string, userPrompt?: string): Me
   while ((match = styleARegex.exec(text)) !== null) {
     const rawTitle = match[1]?.replace(/^[#\s]+|[\s#]+$/g, "").trim();
     const year = match[2];
-    if (rawTitle) {
+    if (rawTitle && !ignoreWords.test(rawTitle)) {
       addCandidate(rawTitle, year);
     }
   }
 
-  // 3. Numbered or Bullet list with bold title: "1. **Title** (Year)" or "* **Title** (Year)" or "- **Title** (Year)"
-  // Unicode \p{L} support for Hindi Devanagari & Latin titles
-  const listBoldRegex = /(?:^|\n)\s*(?:\d+\.|\*|-)\s*\*\*([^*]+?)\*\*(?:\s*\(([0-9]{4})\))?/gu;
-  while ((match = listBoldRegex.exec(text)) !== null) {
+  // 3. Numbered or Bullet list with bold title: ONLY if it has an explicit (YYYY) year OR contains movie indicator
+  const listBoldWithYearRegex = /(?:^|\n)\s*(?:\d+\.|\*|-)\s*\*\*([^*]+?)\*\*\s*\(([0-9]{4})\)/gu;
+  while ((match = listBoldWithYearRegex.exec(text)) !== null) {
     const rawTitle = match[1]?.trim();
     const year = match[2];
-    if (rawTitle) {
+    if (rawTitle && !ignoreWords.test(rawTitle)) {
       addCandidate(rawTitle, year);
     }
   }
 
   // 4. Comparison Table rows: "| **Title** | ... |"
-  const tableRegex = /\|\s*\*\*([^*]+?)\*\*\s*\|/gu;
-  while ((match = tableRegex.exec(text)) !== null) {
-    const rawTitle = match[1]?.trim();
-    if (rawTitle) {
-      addCandidate(rawTitle);
-    }
-  }
-
-  // 5. Bold title with explicit year in body: "**Title** (Year)"
-  const boldWithYearRegex = /\*\*([^*]+?)\*\*\s*\(([0-9]{4})\)/gu;
-  while ((match = boldWithYearRegex.exec(text)) !== null) {
-    const rawTitle = match[1]?.trim();
-    const year = match[2];
-    if (rawTitle) {
-      addCandidate(rawTitle, year);
+  if (hasResponseMediaMarkers) {
+    const tableRegex = /\|\s*\*\*([^*]+?)\*\*\s*\|/gu;
+    while ((match = tableRegex.exec(text)) !== null) {
+      const rawTitle = match[1]?.trim();
+      if (rawTitle && !ignoreWords.test(rawTitle)) {
+        addCandidate(rawTitle);
+      }
     }
   }
 
   return Array.from(queries.entries())
-    .slice(0, 12)
+    .slice(0, 10)
     .map(([query, meta]) => ({ query, year: meta.year, isAnime: meta.isAnime }));
 }

@@ -191,6 +191,7 @@ function ChatPage() {
     const placeholderMsg: ChatMessage = {
       ...fullReply,
       content: "",
+      tmdbItems: undefined,
       isStreaming: true,
       isAborted: false,
     };
@@ -237,6 +238,7 @@ function ChatPage() {
           ? {
               ...m,
               content: fullText,
+              tmdbItems: fullReply.tmdbItems,
               isStreaming: false,
               isAborted: false,
             }

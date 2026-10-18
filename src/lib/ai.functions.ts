@@ -5,7 +5,10 @@ import {
   fetchTMDBTrending,
   fetchTMDBIndianTopMovies,
   findBestTMDBMatch,
+  searchTMDBMedia,
   extractQueriedMediaFromUserPrompt,
+  STUDY_OR_ACADEMIC_REGEX,
+  HAS_MEDIA_KEYWORDS_REGEX,
   type TMDBMediaItem,
 } from "@/lib/tmdb";
 
@@ -36,49 +39,85 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     const userPrompt = data.content.trim();
     const systemInstruction = data.customInstructions?.trim() || DEFAULT_SYSTEM_PROMPT;
 
-    const fullContext = [...(data.history?.slice(-2).map((m) => m.content) || []), userPrompt].join(
-      " ",
-    );
+    // 1. Strictly detect if user prompt is asking about study, academic, or non-entertainment topics
+    const isStudyOrAcademic =
+      STUDY_OR_ACADEMIC_REGEX.test(userPrompt) && !HAS_MEDIA_KEYWORDS_REGEX.test(userPrompt);
 
-    const isIndianQuery =
-      /(?:india|indian|हिंदी|हिन्दी|इंडिया|भारत|बॉलीवुड|bollywood|desi|tollywood|kollywood|south indian|hindi movie|indian movie|12th fail|drishyam|दृश्यम|3 idiots|dangal|tumbbad|pushpa|sholay)/i.test(
+    // 2. Immediate previous message (check if user is in a direct movie follow-up conversation)
+    const prevMsg = data.history?.slice(-1)[0]?.content || "";
+    const isDirectMovieFollowUp =
+      /(?:movie|film|cinema|series|web series|anime|tmdb|शो|फिल्म|मूवी)/i.test(prevMsg) &&
+      /(?:best|top|सजेशन|बताओ|recommend|suggest|kya dekhu|kya dekhe|kuch batao|next)/i.test(
         userPrompt,
-      ) ||
-      (/(?:india|indian|हिंदी|हिन्दी|इंडिया|भारत|बॉलीवुड|bollywood)/i.test(userPrompt) &&
-        /(?:movie|फिल्म|cinema|शो|सीरीज|best|top|सजेशन|बताओ)/i.test(userPrompt)) ||
-      (/(?:top|best|बताओ|सजेशन|मूवी|फिल्में)/i.test(userPrompt) &&
-        /(?:india|indian|हिंदी|हिन्दी|इंडिया|भारत|बॉलीवुड|bollywood)/i.test(fullContext));
+      );
 
-    const isTrendingQuery =
-      /(?:trending|ट्रेन्डिंग|ट्रेंडिंग|popular|top movies|top 5|top 10|best movies|नई फिल्में|हालिया फिल्में|आज की ट्रेंडिंग|आज ट्रेंडिंग|trending movies|trending series|what to watch|आज की मूवी|पांच मूवी|टॉप मूवी|बेस्ट बताओ|टॉप बताओ|best बताओ)/i.test(
-        userPrompt,
-      ) ||
-      (isIndianQuery && /(?:best|top|मूवी|फिल्में|बताओ)/i.test(userPrompt));
+    const hasEntertainmentIntent =
+      !isStudyOrAcademic && (HAS_MEDIA_KEYWORDS_REGEX.test(userPrompt) || isDirectMovieFollowUp);
 
     let groundedTMDBItems: TMDBMediaItem[] = [];
 
-    if (isIndianQuery) {
-      try {
-        groundedTMDBItems = await fetchTMDBIndianTopMovies();
-      } catch (err) {
-        console.warn("Failed fetching Indian TMDB for AI grounding:", err);
-      }
-    } else if (isTrendingQuery) {
-      try {
-        groundedTMDBItems = await fetchTMDBTrending("all", "day");
-      } catch (err) {
-        console.warn("Failed fetching trending TMDB for AI grounding:", err);
-      }
-    } else {
-      const queriedTitle = extractQueriedMediaFromUserPrompt(userPrompt);
-      if (queriedTitle && queriedTitle.query) {
+    // ONLY ground TMDB if user inquiry has positive entertainment intent!
+    if (hasEntertainmentIntent) {
+      const isIndianTopMoviesQuery =
+        /(?:hindi\s*movie|indian\s*movie|bollywood|tollywood|kollywood|south\s*movie|हिंदी\s*मूवी|भारतीय\s*फिल्म|बॉलीवुड|देसी|इंडिया\s*की\s*मूवी)/i.test(
+          userPrompt,
+        ) ||
+        (/(?:india|indian|इंडिया|भारत|बॉलीवुड)/i.test(userPrompt) &&
+          /(?:best|top|सजेशन|बताओ|मूवी|फिल्म)/i.test(userPrompt)) ||
+        (/(?:इंडिया\s*के\s*लिए|हिंदी\s*में)/i.test(userPrompt) &&
+          /(?:best|top|बताओ|सजेशन|मूवी|फिल्म)/i.test(userPrompt));
+
+      const isTrendingQuery =
+        !isIndianTopMoviesQuery &&
+        /(?:trending|ट्रेन्डिंग|ट्रेंडिंग|popular|top\s*movies|top\s*5\s*movies|top\s*10\s*movies|best\s*movies|नई\s*फिल्में|हालिया\s*फिल्में|आज\s*की\s*ट्रेंडिंग|trending\s*movies|trending\s*series|what\s*to\s*watch|आज\s*की\s*मूवी|पांच\s*मूवी|टॉप\s*मूवी)/i.test(
+          userPrompt,
+        );
+
+      if (isIndianTopMoviesQuery) {
         try {
-          const best = await findBestTMDBMatch(queriedTitle.query, undefined, queriedTitle.isAnime);
-          if (best) {
-            groundedTMDBItems.push(best);
-          }
+          groundedTMDBItems = await fetchTMDBIndianTopMovies();
         } catch (err) {
-          console.warn("Failed fetching matched title for AI grounding:", err);
+          console.warn("Failed fetching Indian TMDB for AI grounding:", err);
+        }
+      } else if (isTrendingQuery) {
+        try {
+          groundedTMDBItems = await fetchTMDBTrending("all", "day");
+        } catch (err) {
+          console.warn("Failed fetching trending TMDB for AI grounding:", err);
+        }
+      } else {
+        const queriedTitle = extractQueriedMediaFromUserPrompt(userPrompt);
+        if (queriedTitle && queriedTitle.query) {
+          try {
+            const best = await findBestTMDBMatch(
+              queriedTitle.query,
+              undefined,
+              queriedTitle.isAnime,
+            );
+            if (best) {
+              groundedTMDBItems.push(best);
+            }
+          } catch (err) {
+            console.warn("Failed fetching matched title for AI grounding:", err);
+          }
+        } else {
+          // Dynamic search for specific genre or requirement (e.g. "Action movies", "Horror", "Comedy", "Anime")
+          const cleanSearch = userPrompt
+            .replace(
+              /(?:batao|bataiye|suggest|recommend|best|top|kuch|achhi|achha|movie|movies|film|films|series)/gi,
+              "",
+            )
+            .trim();
+          if (cleanSearch.length >= 2) {
+            try {
+              const live = await searchTMDBMedia(cleanSearch, false);
+              if (live.length > 0) {
+                groundedTMDBItems = live.slice(0, 6);
+              }
+            } catch {
+              // ignore
+            }
+          }
         }
       }
     }
@@ -211,12 +250,21 @@ ${groundedTMDBItems.some((i) => i.trailerUrl) ? "* **Official Trailer:** [Includ
       }
 
       const now = Date.now();
+
+      // Only attach grounded TMDB items that were ACTUALLY mentioned or recommended in replyContent!
+      const replyLower = replyContent.toLowerCase();
+      const verifiedMentionedTMDBItems = groundedTMDBItems.filter((item) => {
+        const titleLower = item.title.toLowerCase();
+        const origLower = item.originalTitle?.toLowerCase();
+        return replyLower.includes(titleLower) || (origLower && replyLower.includes(origLower));
+      });
+
       const assistantReply = {
         id: `reply-${now}`,
         role: "assistant" as const,
         content: replyContent,
         created_at: new Date().toISOString(),
-        tmdbItems: groundedTMDBItems.length > 0 ? groundedTMDBItems : undefined,
+        tmdbItems: verifiedMentionedTMDBItems.length > 0 ? verifiedMentionedTMDBItems : undefined,
       };
 
       const userRow = {

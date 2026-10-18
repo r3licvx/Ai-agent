@@ -612,17 +612,33 @@ export function MessageBubble({
   const [copied, setCopied] = useState(false);
 
   // TMDB movie extraction: includes verified backend items and auto-extracted titles
-  const [tmdbItems, setTmdbItems] = useState<TMDBMediaItem[]>(message.tmdbItems || []);
+  const [tmdbItems, setTmdbItems] = useState<TMDBMediaItem[]>([]);
   const mediaQueries = useMemo(() => {
-    if (message.role !== "assistant") return [];
+    // Strictly do not extract or search media while message is currently streaming
+    if (message.role !== "assistant" || message.isStreaming) return [];
     return extractMediaSearchQueries(message.content, previousMessage?.content);
-  }, [message.content, message.role, previousMessage?.content]);
+  }, [message.content, message.role, message.isStreaming, previousMessage?.content]);
 
   useEffect(() => {
-    // If no specific media queries extracted from text, fall back to backend grounded items
+    // If message is streaming or user, clear cards
+    if (message.isStreaming || message.role !== "assistant") {
+      setTmdbItems([]);
+      return;
+    }
+
+    // If no media queries extracted (e.g. user was studying or chatting about general topics),
+    // strictly do NOT show any movie posters!
     if (mediaQueries.length === 0) {
       if (message.tmdbItems && message.tmdbItems.length > 0) {
-        setTmdbItems(message.tmdbItems);
+        const textLower = message.content.toLowerCase();
+        const strictlyMentioned = message.tmdbItems.filter(
+          (it) =>
+            textLower.includes(it.title.toLowerCase()) ||
+            (it.originalTitle && textLower.includes(it.originalTitle.toLowerCase())),
+        );
+        setTmdbItems(strictlyMentioned);
+      } else {
+        setTmdbItems([]);
       }
       return;
     }
@@ -630,14 +646,14 @@ export function MessageBubble({
     let active = true;
 
     const runSearch = async () => {
-      // Find matches for the specific titles recommended in THIS message
+      // Find matches strictly for the specific titles recommended in THIS message
       const items: TMDBMediaItem[] = [];
 
       for (const q of mediaQueries) {
         if (!active) break;
         const qLower = q.query.toLowerCase();
 
-        // 1. Check if backend message.tmdbItems has this exact title
+        // 1. Check if backend message.tmdbItems already has this exact title
         const existing = (message.tmdbItems || []).find(
           (it) =>
             it.title.toLowerCase() === qLower ||
@@ -654,18 +670,18 @@ export function MessageBubble({
         }
 
         // 2. Fetch live match from TMDB for this recommended title
-        const matched = await findBestTMDBMatch(q.query, q.year, q.isAnime);
-        if (matched && !items.some((it) => it.id === matched.id)) {
-          items.push(matched);
+        try {
+          const matched = await findBestTMDBMatch(q.query, q.year, q.isAnime);
+          if (matched && !items.some((it) => it.id === matched.id)) {
+            items.push(matched);
+          }
+        } catch {
+          // ignore
         }
       }
 
       if (active) {
-        if (items.length > 0) {
-          setTmdbItems(items);
-        } else if (message.tmdbItems && message.tmdbItems.length > 0) {
-          setTmdbItems(message.tmdbItems);
-        }
+        setTmdbItems(items);
       }
     };
 
@@ -674,7 +690,7 @@ export function MessageBubble({
     return () => {
       active = false;
     };
-  }, [mediaQueries, message.tmdbItems]);
+  }, [mediaQueries, message.content, message.isStreaming, message.role, message.tmdbItems]);
 
   // YouTube video extraction and live details fetching
   const [videoMap, setVideoMap] = useState<Record<string, YouTubeVideoDetails>>({});
@@ -812,10 +828,10 @@ export function MessageBubble({
             )}
 
             {/* TMDB Movie & Anime Posters for explicitly recommended titles (Opens directly on TMDB) */}
-            {tmdbItems.length > 0 && <TMDBMediaCards items={tmdbItems} />}
+            {!message.isStreaming && tmdbItems.length > 0 && <TMDBMediaCards items={tmdbItems} />}
 
             {/* YouTube Video Details Preview Cards at the bottom */}
-            {videoIds.length > 0 && (
+            {!message.isStreaming && videoIds.length > 0 && (
               <div className="mt-3.5 space-y-3">
                 {videoIds.map((id) =>
                   videoMap[id] ? <YouTubeVideoCard key={id} video={videoMap[id]} /> : null,
@@ -824,7 +840,7 @@ export function MessageBubble({
             )}
 
             {/* YouTube Channel Details Preview Cards at the bottom */}
-            {channelList.length > 0 && (
+            {!message.isStreaming && channelList.length > 0 && (
               <div className="mt-3.5 space-y-3">
                 {channelList.map((c) => {
                   const key = c.key.toLowerCase();

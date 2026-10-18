@@ -1,5 +1,5 @@
 import React from "react";
-import { Star, Film, Tv, ExternalLink, Clapperboard } from "lucide-react";
+import { Star, Film, Tv, ExternalLink, Clapperboard, Play } from "lucide-react";
 import type { TMDBMediaItem } from "@/lib/tmdb";
 
 export interface TMDBMediaCardsProps {
@@ -92,7 +92,23 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
 
                 <div className="mt-2 pt-1.5 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground group-hover/card:text-primary transition-colors">
                   <span className="font-semibold">TMDB</span>
-                  <ExternalLink className="size-3 shrink-0 opacity-70 group-hover/card:opacity-100" />
+                  {movie.trailerUrl ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        window.open(movie.trailerUrl!, "_blank", "noopener,noreferrer");
+                      }}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-600/10 hover:bg-red-600 text-red-600 hover:text-white font-bold text-[10px] transition-all cursor-pointer"
+                      title={`Watch official trailer for ${movie.title} on YouTube`}
+                    >
+                      <Play className="size-2.5 fill-current" />
+                      <span>Trailer</span>
+                    </button>
+                  ) : (
+                    <ExternalLink className="size-3 shrink-0 opacity-70 group-hover/card:opacity-100" />
+                  )}
                 </div>
               </div>
             </a>

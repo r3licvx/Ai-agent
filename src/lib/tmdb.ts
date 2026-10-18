@@ -26,47 +26,35 @@ export type MediaSearchQuery = {
   isAnime: boolean;
 };
 
-// In-memory cache for ultra-fast instant lookups
+// Memory cache for TMDB queries
 const searchMemoryCache = new Map<string, TMDBMediaItem[]>();
 
-// Known popular anime titles to auto-detect anime intent
+// Known anime keywords to identify genuine Japanese anime
 const KNOWN_ANIME_KEYWORDS = [
-  "death note",
+  "anime",
   "naruto",
-  "attack on titan",
-  "shingeki",
-  "jujutsu kaisen",
-  "demon slayer",
-  "kimetsu",
-  "solo leveling",
+  "bleach",
   "one piece",
   "dragon ball",
-  "bleach",
-  "chainsaw man",
-  "vinland saga",
-  "hunter x hunter",
-  "fullmetal",
-  "tokyo ghoul",
-  "spy x family",
+  "attack on titan",
+  "shingeki",
+  "jujutsu",
+  "demon slayer",
+  "kimetsu",
+  "death note",
   "my hero academia",
   "boku no hero",
-  "haikyuu",
-  "code geass",
-  "steins gate",
-  "steins;gate",
-  "mob psycho",
-  "black clover",
+  "chainsaw man",
+  "fullmetal alchemist",
+  "hunter x hunter",
+  "tokyo ghoul",
   "sword art online",
-  "one punch man",
-  "your name",
-  "spirited away",
-  "weathering with you",
-  "suzume",
-  "jojo",
   "evangelion",
-  "berserk",
-  "monster",
-  "violet evergarden",
+  "cowboy bebop",
+  "steins;gate",
+  "vinland saga",
+  "solo leveling",
+  "spy x family",
   "cyberpunk edgerunners",
   "frieren",
   "blue lock",
@@ -80,16 +68,49 @@ const HINDI_TITLE_MAP: Record<string, string> = {
   "लव इंश्योरेंस": "Love Insurance Kompany",
   "लव इन्शुरन्स कंपनी": "Love Insurance Kompany",
   "स्ट्रेंजर थिंग्स": "Stranger Things",
+  दृश्यम: "Drishyam",
+  "दृश्यम 2": "Drishyam 2",
+  द्रिश्यम: "Drishyam",
+  "द्रिश्यम 2": "Drishyam 2",
+  "12th फेल": "12th Fail",
+  "12वीं फेल": "12th Fail",
+  "बारहवीं फेल": "12th Fail",
+  "१२वीं फेल": "12th Fail",
+  "3 इडियट्स": "3 Idiots",
+  "थ्री इडियट्स": "3 Idiots",
+  "थ्री इडियट": "3 Idiots",
+  "3 इडियट": "3 Idiots",
+  दंगल: "Dangal",
+  शोले: "Sholay",
+  तुम्बाड: "Tumbbad",
+  तुम्बाड़: "Tumbbad",
+  स्त्री: "Stree",
+  "स्त्री 2": "Stree 2",
+  "तारे ज़मीन पर": "Taare Zameen Par",
+  "गैंग्स ऑफ वासेपुर": "Gangs of Wasseypur",
+  "चक दे इंडिया": "Chak De! India",
+  लगान: "Lagaan",
+  स्वदेस: "Swades",
+  "हेरा फेरी": "Hera Pheri",
+  "फिर हेरा फेरी": "Phir Hera Pheri",
+  "अंदाज अपना अपना": "Andaz Apna Apna",
+  "बजरंगी भाईजान": "Bajrangi Bhaijaan",
+  कंतारा: "Kantara",
+  विक्रम: "Vikram",
+  जेलर: "Jailer",
+  लियो: "Leo",
   पुष्पा: "Pushpa",
-  "पुष्पा 2": "Pushpa 2",
+  "पुष्पा 2": "Pushpa 2: The Rule",
   जवान: "Jawan",
   पठान: "Pathaan",
   डंकी: "Dunki",
   कल्कि: "Kalki 2898 AD",
   सालार: "Salaar",
-  केजीएफ: "KGF",
+  केजीएफ: "K.G.F: Chapter 1",
+  "केजीएफ 2": "K.G.F: Chapter 2",
   आरआरआर: "RRR",
   बाहुबली: "Baahubali",
+  "बाहुबली 2": "Baahubali 2",
   पंचायत: "Panchayat",
   मिर्जापुर: "Mirzapur",
   "सेक्रेड गेम्स": "Sacred Games",
@@ -101,6 +122,24 @@ const HINDI_TITLE_MAP: Record<string, string> = {
   "कोटा फैक्ट्री": "Kota Factory",
   गुल्लक: "Gullak",
   स्कैम: "Scam 1992",
+  "स्कैम 1992": "Scam 1992",
+  महाराजा: "Maharaja",
+  "लापता लेडीज": "Laapataa Ladies",
+  "लापता लेडीज़": "Laapataa Ladies",
+  "आर्टिकल 370": "Article 370",
+  "सैम बहादुर": "Sam Bahadur",
+  "द कश्मीर फाइल्स": "The Kashmir Files",
+  "कश्मीर फाइल्स": "The Kashmir Files",
+  शैतान: "Shaitaan",
+  "भूल भुलैया": "Bhool Bhulaiyaa",
+  "भूल भुलैया 2": "Bhool Bhulaiyaa 2",
+  "भूल भुलैया 3": "Bhool Bhulaiyaa 3",
+  सिंघम: "Singham",
+  "सिंघम अगेन": "Singham Again",
+  छावा: "Chhaava",
+  "कबीर सिंह": "Kabir Singh",
+  उरी: "Uri: The Surgical Strike",
+  अंधाधुन: "Andhadhun",
   "मनी हाइस्ट": "Money Heist",
   "गेम ऑफ थ्रोन्स": "Game of Thrones",
   "ब्रेकिंग बैड": "Breaking Bad",
@@ -115,22 +154,27 @@ const HINDI_TITLE_MAP: Record<string, string> = {
 };
 
 // Helper to resolve search queries: handles Hindi titles, parentheses translations, etc.
-function resolveSearchTerms(rawQuery: string): string[] {
+export function resolveSearchTerms(rawQuery: string): string[] {
   const terms: string[] = [];
   const trimmed = rawQuery.trim();
   if (!trimmed) return terms;
 
-  // 1. If query contains English in parentheses e.g. "लव इंश्योरेंस कंपनी (Love Insurance Kompany)"
+  // 1. If query contains English in parentheses e.g. "दृश्यम (Drishyam)" or "लव इंश्योरेंस कंपनी (Love Insurance Kompany)"
   const parenMatch = /\(([^)]+)\)/.exec(trimmed);
   if (parenMatch && /[a-zA-Z0-9]/.test(parenMatch[1])) {
-    terms.push(parenMatch[1].trim());
+    const extracted = parenMatch[1].trim();
+    if (extracted.length >= 2 && !terms.includes(extracted)) {
+      terms.push(extracted);
+    }
   }
 
   // 2. Direct match from Hindi title dictionary
   const lower = trimmed.toLowerCase();
   for (const [hindi, english] of Object.entries(HINDI_TITLE_MAP)) {
-    if (lower.includes(hindi)) {
-      terms.push(english);
+    if (lower === hindi || lower.includes(hindi)) {
+      if (!terms.includes(english)) {
+        terms.push(english);
+      }
     }
   }
 
@@ -141,8 +185,16 @@ function resolveSearchTerms(rawQuery: string): string[] {
     phonetics = phonetics.replace(/इंश्योरेंस|इन्शुरन्स/gi, "Insurance");
   if (/कंपनी|कम्पनी/i.test(phonetics)) phonetics = phonetics.replace(/कंपनी|कम्पनी/gi, "Kompany");
   if (/कॉर्पोरेशन/i.test(phonetics)) phonetics = phonetics.replace(/कॉर्पोरेशन/gi, "Corporation");
+  if (/दृश्यम|द्रिश्यम/i.test(phonetics))
+    phonetics = phonetics.replace(/दृश्यम|द्रिश्यम/gi, "Drishyam");
+  if (/फेल/i.test(phonetics)) phonetics = phonetics.replace(/फेल/gi, "Fail");
+  if (/इडियट्स|इडियट/i.test(phonetics)) phonetics = phonetics.replace(/इडियट्स|इडियट/gi, "Idiots");
+
   if (phonetics !== trimmed && /[a-zA-Z]/.test(phonetics)) {
-    terms.push(phonetics.replace(/[^\w\s-]/g, "").trim());
+    const cleanedPhonetics = phonetics.replace(/[^\w\s-]/g, "").trim();
+    if (cleanedPhonetics && !terms.includes(cleanedPhonetics)) {
+      terms.push(cleanedPhonetics);
+    }
   }
 
   // 4. Clean raw query (strip symbols, numbers if any)
@@ -158,7 +210,7 @@ function resolveSearchTerms(rawQuery: string): string[] {
 }
 
 // Helper to query TMDB API with automatic failover through the 6 API keys
-async function fetchTMDBWithFallback(
+export async function fetchTMDBWithFallback(
   buildUrl: (apiKey: string) => string,
 ): Promise<Response | null> {
   for (let i = 0; i < TMDB_API_KEYS.length; i++) {
@@ -169,34 +221,26 @@ async function fetchTMDBWithFallback(
       if (res.ok) {
         return res;
       }
-    } catch {
-      // try next key
+      if (res.status === 429 || res.status === 401) {
+        console.warn(`TMDB API Key at index ${i} failed (${res.status}). Trying fallback key...`);
+        continue;
+      }
+      return res;
+    } catch (err) {
+      console.warn(`TMDB API request failed on key index ${i}:`, err);
     }
   }
   return null;
 }
 
-// Convert TMDB raw search result item into a clean structured TMDBMediaItem
+// Transform raw TMDB object into standardized TMDBMediaItem
 function transformTMDBItem(
-  item: {
-    id: number;
-    media_type?: string;
-    title?: string;
-    name?: string;
-    original_title?: string;
-    original_name?: string;
-    overview?: string;
-    poster_path?: string | null;
-    backdrop_path?: string | null;
-    release_date?: string;
-    first_air_date?: string;
-    vote_average?: number;
-    vote_count?: number;
-    original_language?: string;
-    genre_ids?: number[];
-  },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  item: any,
   forceAnime = false,
 ): TMDBMediaItem | null {
+  if (!item) return null;
+
   const isMovie = item.media_type === "movie" || (!item.media_type && !!item.title);
   const isTv = item.media_type === "tv" || (!item.media_type && !!item.name);
 
@@ -367,13 +411,12 @@ export async function fetchTMDBDetailsAndCredits(
     const data = await res.json();
     const cast: string[] = (data.credits?.cast || [])
       .slice(0, 5)
-      .map((c: { name: string }) => c.name)
-      .filter(Boolean);
+      .map((c: { name: string }) => c.name);
 
     const creators: string[] = [];
-    if (mediaType === "tv" && Array.isArray(data.created_by)) {
-      for (const c of data.created_by) {
-        if (c?.name) creators.push(c.name);
+    if (Array.isArray(data.created_by)) {
+      for (const cr of data.created_by) {
+        if (cr.name) creators.push(cr.name);
       }
     }
     if (creators.length === 0 && Array.isArray(data.credits?.crew)) {
@@ -437,7 +480,7 @@ export async function fetchTMDBTrending(
       }
     }
 
-    // Enrich top 5 items with credits & official trailer
+    // Enrich top items with credits & official trailer
     await Promise.all(
       items.slice(0, 5).map(async (item) => {
         const extra = await fetchTMDBDetailsAndCredits(item.id, item.mediaType);
@@ -453,6 +496,44 @@ export async function fetchTMDBTrending(
     console.warn("Failed to fetch trending from TMDB:", err);
     return [];
   }
+}
+
+// Fetch top rated & trending Indian movies from TMDB
+export async function fetchTMDBIndianTopMovies(): Promise<TMDBMediaItem[]> {
+  const cacheKey = "indian_top_movies_v2";
+  if (searchMemoryCache.has(cacheKey)) {
+    return searchMemoryCache.get(cacheKey)!;
+  }
+
+  const items: TMDBMediaItem[] = [];
+  const seenIds = new Set<number>();
+
+  // Curated list of undisputed Indian masterworks to ensure accurate matches
+  const coreIndianTitles = [
+    { title: "12th Fail", year: "2023" },
+    { title: "3 Idiots", year: "2009" },
+    { title: "Drishyam", year: "2015" },
+    { title: "Dangal", year: "2016" },
+    { title: "Tumbbad", year: "2018" },
+    { title: "Gangs of Wasseypur", year: "2012" },
+    { title: "Sholay", year: "1975" },
+    { title: "Taare Zameen Par", year: "2007" },
+  ];
+
+  for (const c of coreIndianTitles) {
+    try {
+      const match = await findBestTMDBMatch(c.title, c.year, false);
+      if (match && !seenIds.has(match.id)) {
+        seenIds.add(match.id);
+        items.push(match);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  searchMemoryCache.set(cacheKey, items);
+  return items;
 }
 
 // Find single best match for a recommended title and enrich with credits & trailer
@@ -494,6 +575,15 @@ export function extractQueriedMediaFromUserPrompt(userPrompt: string): MediaSear
     .replace(/[?।!.,]/g, "")
     .trim();
 
+  // If candidate is a generic question or discovery inquiry, do NOT treat as a title!
+  const isGeneric =
+    /^(?:top\s*movies?|best\s*movies?|trending\s*movies?|new\s*movies?|movies?\s*list|what\s*to\s*watch|टॉप\s*मूवी|टॉप\s*फिल्में|बेस्ट\s*मूवी|बेस्ट\s*फिल्में|मूवी\s*बताओ|फिल्में\s*बताओ|इंडिया\s*के\s*लिए|इंडिया\s*की\s*मूवी|बॉलीवुड\s*की\s*मूवी|हिंदी\s*मूवी|ट्रेन्डिंग|ट्रेंडिंग|आज\s*की\s*मूवी|पांच\s*मूवी|5\s*मूवी|10\s*मूवी|top\s*5|top\s*10|इंडिया\s*के\s*लिए\s*बेस्ट|बेस्ट\s*बताओ|टॉप\s*बताओ|best\s*बताओ)$/i.test(
+      candidate,
+    );
+  if (isGeneric) {
+    return null;
+  }
+
   // If candidate is a known title or transliterated
   for (const [hindi, english] of Object.entries(HINDI_TITLE_MAP)) {
     if (candidate.toLowerCase().includes(hindi)) {
@@ -512,13 +602,13 @@ export function extractQueriedMediaFromUserPrompt(userPrompt: string): MediaSear
   return null;
 }
 
-// Extract recommended titles from AI output (Style A headings, tables, numbered lists, or bold titles)
+// Extract recommended titles from AI output (Style A headings, tables, numbered lists, bullet lists, or bold titles)
 export function extractMediaSearchQueries(text: string, userPrompt?: string): MediaSearchQuery[] {
   if (!text && !userPrompt) return [];
 
   const queries = new Map<string, { year?: string; isAnime: boolean }>();
 
-  // 1. If user asked about a specific title in their prompt, ensure it's priority #1
+  // 1. If user asked about a specific title in their prompt (e.g. "Stranger Things", "12th Fail"), include it
   if (userPrompt) {
     const directUserQuery = extractQueriedMediaFromUserPrompt(userPrompt);
     if (directUserQuery && directUserQuery.query) {
@@ -528,69 +618,81 @@ export function extractMediaSearchQueries(text: string, userPrompt?: string): Me
     }
   }
 
-  // 2. Style A Curated Showcase headings: "### 1. Title (Year)" or "### Title (Year)"
+  const ignoreWords =
+    /^(?:the hook|why it hits|key specs|verdict|specs|cast & crew|lead cast|director|format|style|the curated|the quick|actionable|mathematical|youtube|creator|rules|step \d+|step|note|warning|pro tip|summary|final answer|name|title|score|best for|vibe|points?|hook)$/i;
+
+  // Helper to add resolved candidate
+  const addCandidate = (raw: string, year?: string) => {
+    let title = raw.trim();
+    if (!title || title.length < 2) return;
+
+    // Check if title has parentheses with English e.g. "दृश्यम (Drishyam)"
+    const parenMatch = /\(([^)]+)\)/.exec(title);
+    if (parenMatch && /[a-zA-Z0-9]/.test(parenMatch[1])) {
+      title = parenMatch[1].trim();
+    }
+
+    // Strip leading number dots, e.g. "1. Drishyam"
+    title = title.replace(/^\d+\.\s*/, "").trim();
+
+    // Check against ignore words
+    if (ignoreWords.test(title)) return;
+
+    // Resolve Hindi titles via dictionary if present
+    for (const [hindi, english] of Object.entries(HINDI_TITLE_MAP)) {
+      if (title.toLowerCase() === hindi || title.includes(hindi)) {
+        title = english;
+        break;
+      }
+    }
+
+    const isAnime = KNOWN_ANIME_KEYWORDS.some((k) => title.toLowerCase().includes(k));
+    if (!queries.has(title)) {
+      queries.set(title, { year, isAnime });
+    }
+  };
+
+  // 2. Style A Curated Showcase headings: "### 1. Title (Year)" or "### Title (Year)" or "### 1. Title"
   const styleARegex = /###\s*(?:\d+\.\s*)?([^\n(]+?)(?:\s*\(([0-9]{4})\))?(?:\n|$|\r)/g;
   let match: RegExpExecArray | null;
   while ((match = styleARegex.exec(text)) !== null) {
     const rawTitle = match[1]?.replace(/^[#\s]+|[\s#]+$/g, "").trim();
     const year = match[2];
-    if (
-      rawTitle &&
-      rawTitle.length > 1 &&
-      !/^(formatting|style|the curated|the quick|actionable|mathematical|youtube|creator|rules|step|note|warning|pro tip|summary|final answer)/i.test(
-        rawTitle,
-      )
-    ) {
-      // Check if title itself is in known anime keywords (never contaminate non-anime shows!)
-      const isAnime = KNOWN_ANIME_KEYWORDS.some((k) => rawTitle.toLowerCase().includes(k));
-      queries.set(rawTitle, { year, isAnime });
+    if (rawTitle) {
+      addCandidate(rawTitle, year);
     }
   }
 
-  // 3. Style B Comparison Table rows: "| **Title** | ... |"
-  const tableRegex = /\|\s*\*\*([A-Za-z0-9\s:,'’.-]{2,40})\*\*\s*\|/g;
-  while ((match = tableRegex.exec(text)) !== null) {
-    const title = match[1]?.trim();
-    if (title && !/^(name|title|item|movie|anime|film|score|best for|vibe)/i.test(title)) {
-      const isAnime = KNOWN_ANIME_KEYWORDS.some((k) => title.toLowerCase().includes(k));
-      queries.set(title, { isAnime });
-    }
-  }
-
-  // 4. Numbered list with bold title: "1. **Title** (Year)" or "1. **Title**"
-  const numberedBoldRegex =
-    /(?:^|\n)\s*\d+\.\s*\*\*([A-Za-z0-9\s:,'’.-]{2,40})\*\*(?:\s*\(([0-9]{4})\))?/g;
-  while ((match = numberedBoldRegex.exec(text)) !== null) {
-    const title = match[1]?.trim();
+  // 3. Numbered or Bullet list with bold title: "1. **Title** (Year)" or "* **Title** (Year)" or "- **Title** (Year)"
+  // Unicode \p{L} support for Hindi Devanagari & Latin titles
+  const listBoldRegex = /(?:^|\n)\s*(?:\d+\.|\*|-)\s*\*\*([^*]+?)\*\*(?:\s*\(([0-9]{4})\))?/gu;
+  while ((match = listBoldRegex.exec(text)) !== null) {
+    const rawTitle = match[1]?.trim();
     const year = match[2];
-    if (
-      title &&
-      !/^(step|note|warning|pro tip|final answer|answer|rule|summary|why|point|hook|verdict|specs|the hook|why it hits|key specs)/i.test(
-        title,
-      )
-    ) {
-      const isAnime = KNOWN_ANIME_KEYWORDS.some((k) => title.toLowerCase().includes(k));
-      queries.set(title, { year, isAnime });
+    if (rawTitle) {
+      addCandidate(rawTitle, year);
+    }
+  }
+
+  // 4. Comparison Table rows: "| **Title** | ... |"
+  const tableRegex = /\|\s*\*\*([^*]+?)\*\*\s*\|/gu;
+  while ((match = tableRegex.exec(text)) !== null) {
+    const rawTitle = match[1]?.trim();
+    if (rawTitle) {
+      addCandidate(rawTitle);
     }
   }
 
   // 5. Bold title with explicit year in body: "**Title** (Year)"
-  const boldWithYearRegex = /\*\*([A-Za-z0-9\s:,'’.-]{2,40})\*\*\s*\(([0-9]{4})\)/g;
+  const boldWithYearRegex = /\*\*([^*]+?)\*\*\s*\(([0-9]{4})\)/gu;
   while ((match = boldWithYearRegex.exec(text)) !== null) {
-    const title = match[1]?.trim();
+    const rawTitle = match[1]?.trim();
     const year = match[2];
-    if (
-      title &&
-      !/^(step|note|warning|pro tip|final answer|answer|rule|summary|why|point|hook|verdict|specs|the hook|why it hits|key specs)/i.test(
-        title,
-      )
-    ) {
-      const isAnime = KNOWN_ANIME_KEYWORDS.some((k) => title.toLowerCase().includes(k));
-      queries.set(title, { year, isAnime });
+    if (rawTitle) {
+      addCandidate(rawTitle, year);
     }
   }
 
-  // Return up to 12 items so NO user recommendations are truncated
   return Array.from(queries.entries())
     .slice(0, 12)
     .map(([query, meta]) => ({ query, year: meta.year, isAnime: meta.isAnime }));

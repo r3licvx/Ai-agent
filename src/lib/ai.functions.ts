@@ -3,6 +3,7 @@ import { z } from "zod";
 import { CUSTOM_ENDPOINT, CUSTOM_API_KEY, DEFAULT_SYSTEM_PROMPT } from "@/lib/constants";
 import {
   fetchTMDBTrending,
+  fetchTMDBIndianTopMovies,
   findBestTMDBMatch,
   extractQueriedMediaFromUserPrompt,
   type TMDBMediaItem,
@@ -35,15 +36,34 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     const userPrompt = data.content.trim();
     const systemInstruction = data.customInstructions?.trim() || DEFAULT_SYSTEM_PROMPT;
 
-    // Detect if user query is inquiring about trending movies/series, top movies, or specific titles
-    const isTrendingQuery =
-      /(?:trending|ट्रेन्डिंग|ट्रेंडिंग|popular|top movies|top 5|top 10|best movies|नई फिल्में|हालिया फिल्में|आज की ट्रेंडिंग|आज ट्रेंडिंग|trending movies|trending series|what to watch|आज की मूवी|पांच मूवी|टॉप मूवी)/i.test(
+    const fullContext = [...(data.history?.slice(-2).map((m) => m.content) || []), userPrompt].join(
+      " ",
+    );
+
+    const isIndianQuery =
+      /(?:india|indian|हिंदी|हिन्दी|इंडिया|भारत|बॉलीवुड|bollywood|desi|tollywood|kollywood|south indian|hindi movie|indian movie|12th fail|drishyam|दृश्यम|3 idiots|dangal|tumbbad|pushpa|sholay)/i.test(
         userPrompt,
-      );
+      ) ||
+      (/(?:india|indian|हिंदी|हिन्दी|इंडिया|भारत|बॉलीवुड|bollywood)/i.test(userPrompt) &&
+        /(?:movie|फिल्म|cinema|शो|सीरीज|best|top|सजेशन|बताओ)/i.test(userPrompt)) ||
+      (/(?:top|best|बताओ|सजेशन|मूवी|फिल्में)/i.test(userPrompt) &&
+        /(?:india|indian|हिंदी|हिन्दी|इंडिया|भारत|बॉलीवुड|bollywood)/i.test(fullContext));
+
+    const isTrendingQuery =
+      /(?:trending|ट्रेन्डिंग|ट्रेंडिंग|popular|top movies|top 5|top 10|best movies|नई फिल्में|हालिया फिल्में|आज की ट्रेंडिंग|आज ट्रेंडिंग|trending movies|trending series|what to watch|आज की मूवी|पांच मूवी|टॉप मूवी|बेस्ट बताओ|टॉप बताओ|best बताओ)/i.test(
+        userPrompt,
+      ) ||
+      (isIndianQuery && /(?:best|top|मूवी|फिल्में|बताओ)/i.test(userPrompt));
 
     let groundedTMDBItems: TMDBMediaItem[] = [];
 
-    if (isTrendingQuery) {
+    if (isIndianQuery) {
+      try {
+        groundedTMDBItems = await fetchTMDBIndianTopMovies();
+      } catch (err) {
+        console.warn("Failed fetching Indian TMDB for AI grounding:", err);
+      }
+    } else if (isTrendingQuery) {
       try {
         groundedTMDBItems = await fetchTMDBTrending("all", "day");
       } catch (err) {
@@ -88,20 +108,20 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         })
         .join("\n\n");
 
-      tmdbGroundingPrompt = `\n\n### ⚡ VERIFIED REAL-TIME TMDB DATABASE GROUNDING ⚡
+      tmdbGroundingPrompt = `\n\n### ⚡ VERIFIED REAL-TIME TMDB DATABASE GROUNDING (${isIndianQuery ? "INDIAN / BOLLYWOOD CINEMA" : "LIVE TMDB DATABASE"}) ⚡
 Here is the 100% verified live TMDB data matching the user's inquiry:
 
 ${formattedItems}
 
 MANDATORY INSTRUCTIONS FOR AARAMBH:
-1. Base your recommendations or explanations directly on these verified TMDB titles.
+1. Base your recommendations or explanations directly on these verified TMDB titles. ${isIndianQuery ? "Since the user is asking for Indian cinema / 'इंडिया के लिए', prioritize these verified Indian masterpieces (e.g. 12th Fail, 3 Idiots, Drishyam, Dangal, Tumbbad)." : ""}
 2. For each title, use the clean Curated Showcase format:
 ### [Index]. [Official English Title] ([Year])
 * **The Hook:** [Crisp 1-line hook capturing the essence]
 * **Cast & Crew:** [Mention the verified actors and directors from above]
 * **Verdict:** ⭐ [Rating]/10
 ${groundedTMDBItems.some((i) => i.trailerUrl) ? "* **Official Trailer:** [Include the verified YouTube trailer URL from above]" : ""}
-3. NEVER make up fake or expired YouTube links. ONLY use the verified trailer URLs provided above or omit if none.
+3. STRICTLY NEVER make up, invent, or guess fake YouTube links. ONLY use the verified trailer URLs provided directly above or omit. Guessed links are always broken/expired!
 4. The user interface will automatically display verified posters, ratings, and YouTube trailer cards underneath your message.`;
     }
 

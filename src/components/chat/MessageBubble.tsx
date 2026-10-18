@@ -619,27 +619,53 @@ export function MessageBubble({
   }, [message.content, message.role, previousMessage?.content]);
 
   useEffect(() => {
-    if (message.tmdbItems && message.tmdbItems.length > 0) {
-      setTmdbItems(message.tmdbItems);
+    // If no specific media queries extracted from text, fall back to backend grounded items
+    if (mediaQueries.length === 0) {
+      if (message.tmdbItems && message.tmdbItems.length > 0) {
+        setTmdbItems(message.tmdbItems);
+      }
+      return;
     }
-  }, [message.tmdbItems]);
 
-  useEffect(() => {
-    if (mediaQueries.length === 0) return;
     let active = true;
 
     const runSearch = async () => {
-      const items: TMDBMediaItem[] = [...(message.tmdbItems || [])];
+      // Find matches for the specific titles recommended in THIS message
+      const items: TMDBMediaItem[] = [];
+
       for (const q of mediaQueries) {
         if (!active) break;
-        if (items.some((it) => it.title.toLowerCase() === q.query.toLowerCase())) continue;
+        const qLower = q.query.toLowerCase();
+
+        // 1. Check if backend message.tmdbItems has this exact title
+        const existing = (message.tmdbItems || []).find(
+          (it) =>
+            it.title.toLowerCase() === qLower ||
+            (it.originalTitle && it.originalTitle.toLowerCase() === qLower) ||
+            it.title.toLowerCase().includes(qLower) ||
+            qLower.includes(it.title.toLowerCase()),
+        );
+
+        if (existing) {
+          if (!items.some((it) => it.id === existing.id)) {
+            items.push(existing);
+          }
+          continue;
+        }
+
+        // 2. Fetch live match from TMDB for this recommended title
         const matched = await findBestTMDBMatch(q.query, q.year, q.isAnime);
         if (matched && !items.some((it) => it.id === matched.id)) {
           items.push(matched);
         }
       }
-      if (active && items.length > 0) {
-        setTmdbItems(items);
+
+      if (active) {
+        if (items.length > 0) {
+          setTmdbItems(items);
+        } else if (message.tmdbItems && message.tmdbItems.length > 0) {
+          setTmdbItems(message.tmdbItems);
+        }
       }
     };
 

@@ -1,5 +1,5 @@
 {
-  "name": "AI Agent",
+  "name": "तत्व AI",
   "description": "A private, intelligent AI chat agent with local storage and deep reasoning capabilities.",
   "requestFramePermissions": ["microphone", "camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

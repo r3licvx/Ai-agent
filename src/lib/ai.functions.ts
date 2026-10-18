@@ -84,6 +84,12 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       // Clean reasoning or thinking tags if present in output
       replyContent = replyContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
+      // Sanitize any hallucinated googleusercontent links and normalize broken markdown links
+      replyContent = replyContent
+        .replace(/https?:\/\/googleusercontent\.com\/[^\s)]+/gi, "")
+        .replace(/\[([^\]]+)\]\s*\n\s*\((https?:\/\/[^\s)]+)\)/g, "[$1]($2)")
+        .trim();
+
       // Intercept robot canned refusal responses and convert into in-character bro banter
       const refusalRegex =
         /i cannot fulfill|i am unable to|as an ai|i cannot assist|decline to answer|safety guidelines|inappropriate content/i;

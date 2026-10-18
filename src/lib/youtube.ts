@@ -1,4 +1,26 @@
-import { YOUTUBE_API_KEY } from "@/lib/constants";
+import { YOUTUBE_API_KEYS } from "@/lib/constants";
+
+// Helper function to query YouTube API with automatic key failover if quota is exceeded
+async function fetchWithKeyFallback(
+  buildUrl: (apiKey: string) => string,
+): Promise<Response | null> {
+  for (let i = 0; i < YOUTUBE_API_KEYS.length; i++) {
+    const key = YOUTUBE_API_KEYS[i];
+    try {
+      const url = buildUrl(key);
+      const res = await fetch(url);
+      if (res.ok) {
+        return res;
+      }
+      console.warn(
+        `YouTube API key index ${i} failed with status ${res.status}. Trying fallback key...`,
+      );
+    } catch (err) {
+      console.warn(`YouTube API request failed on key index ${i}:`, err);
+    }
+  }
+  return null;
+}
 
 export type YouTubeVideoDetails = {
   id: string;
@@ -199,18 +221,23 @@ async function fetchChannelAvatars(channelIds: string[]): Promise<Record<string,
   if (needed.length === 0) return result;
 
   try {
-    const res = await fetch(
-      `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${needed.join(",")}&key=${YOUTUBE_API_KEY}`,
+    const res = await fetchWithKeyFallback(
+      (key) =>
+        `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${needed.join(",")}&key=${key}`,
     );
-    if (res.ok) {
+    if (res) {
       const data = await res.json();
       const items = data.items || [];
       for (const item of items) {
+        const channelId = item.id;
         const avatar =
-          item.snippet?.thumbnails?.default?.url || item.snippet?.thumbnails?.medium?.url || "";
-        if (id && avatar) {
-          channelAvatarMemoryCache.set(id, avatar);
-          result[id] = avatar;
+          item.snippet?.thumbnails?.default?.url ||
+          item.snippet?.thumbnails?.medium?.url ||
+          item.snippet?.thumbnails?.high?.url ||
+          "";
+        if (channelId && avatar) {
+          channelAvatarMemoryCache.set(channelId, avatar);
+          result[channelId] = avatar;
         }
       }
     }
@@ -219,6 +246,15 @@ async function fetchChannelAvatars(channelIds: string[]): Promise<Record<string,
   }
 
   return result;
+}
+
+export async function getOrFetchChannelAvatar(channelId: string): Promise<string> {
+  if (!channelId) return "";
+  if (channelAvatarMemoryCache.has(channelId)) {
+    return channelAvatarMemoryCache.get(channelId)!;
+  }
+  const avatars = await fetchChannelAvatars([channelId]);
+  return avatars[channelId] || "";
 }
 
 // Fetch batch video details from YouTube Data API v3
@@ -235,7 +271,7 @@ export async function fetchYouTubeVideoDetails(
     }
     if (typeof window !== "undefined") {
       try {
-        const stored = localStorage.getItem(`yt_v3_${id}`);
+        const stored = localStorage.getItem(`yt_v4_${id}`);
         if (stored) {
           const parsed = JSON.parse(stored) as YouTubeVideoDetails;
           videoMemoryCache.set(id, parsed);
@@ -254,10 +290,12 @@ export async function fetchYouTubeVideoDetails(
   }
 
   try {
-    const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${missingIds.join(",")}&key=${YOUTUBE_API_KEY}`;
-    const res = await fetch(url);
+    const res = await fetchWithKeyFallback(
+      (key) =>
+        `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${missingIds.join(",")}&key=${key}`,
+    );
 
-    if (res.ok) {
+    if (res) {
       const data = await res.json();
       const items = (data.items || []) as Array<{
         id: string;
@@ -304,9 +342,7 @@ export async function fetchYouTubeVideoDetails(
           snip.thumbnails?.default?.url ||
           `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
 
-        const channelAvatarUrl =
-          (snip.channelId ? avatars[snip.channelId] : "") ||
-          "https://i.ibb.co/vxr5gVst/1000254285-jpg.jpg";
+        const channelAvatarUrl = (snip.channelId ? avatars[snip.channelId] : "") || "";
 
         const details: YouTubeVideoDetails = {
           id,
@@ -335,7 +371,7 @@ export async function fetchYouTubeVideoDetails(
 
         if (typeof window !== "undefined") {
           try {
-            localStorage.setItem(`yt_v3_${id}`, JSON.stringify(details));
+            localStorage.setItem(`yt_v4_${id}`, JSON.stringify(details));
           } catch {
             // storage full, ignore
           }
@@ -390,7 +426,7 @@ export async function fetchYouTubeChannelDetails(
     }
     if (typeof window !== "undefined") {
       try {
-        const stored = localStorage.getItem(`yt_ch_v3_${cleanKey}`);
+        const stored = localStorage.getItem(`yt_ch_v4_${cleanKey}`);
         if (stored) {
           const parsed = JSON.parse(stored) as YouTubeChannelDetails;
           channelMemoryCache.set(cleanKey, parsed);
@@ -409,32 +445,31 @@ export async function fetchYouTubeChannelDetails(
   for (const item of missing) {
     const cleanKey = item.key.toLowerCase();
     try {
-      let queryUrl = "";
-      if (item.isHandle) {
-        // Strip leading @ if present
-        const handleParam = item.key.replace(/^@/, "");
-        queryUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&forHandle=${encodeURIComponent(handleParam)}&key=${YOUTUBE_API_KEY}`;
-      } else {
-        queryUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${encodeURIComponent(item.key)}&key=${YOUTUBE_API_KEY}`;
-      }
-
-      const res = await fetch(queryUrl);
-      const data = res.ok ? await res.json() : null;
+      const res = await fetchWithKeyFallback((key) => {
+        if (item.isHandle) {
+          const handleParam = item.key.replace(/^@/, "");
+          return `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&forHandle=${encodeURIComponent(handleParam)}&key=${key}`;
+        }
+        return `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${encodeURIComponent(item.key)}&key=${key}`;
+      });
+      const data = res ? await res.json() : null;
       let channelItem = data?.items?.[0];
 
       // If forHandle didn't find it, try search API
       if (!channelItem && item.isHandle) {
-        const searchRes = await fetch(
-          `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(item.key)}&key=${YOUTUBE_API_KEY}`,
+        const searchRes = await fetchWithKeyFallback(
+          (key) =>
+            `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(item.key)}&key=${key}`,
         );
-        if (searchRes.ok) {
+        if (searchRes) {
           const searchData = await searchRes.json();
           const foundChannelId = searchData.items?.[0]?.snippet?.channelId;
           if (foundChannelId) {
-            const chRes = await fetch(
-              `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${foundChannelId}&key=${YOUTUBE_API_KEY}`,
+            const chRes = await fetchWithKeyFallback(
+              (key) =>
+                `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${foundChannelId}&key=${key}`,
             );
-            if (chRes.ok) {
+            if (chRes) {
               const chData = await chRes.json();
               channelItem = chData.items?.[0];
             }
@@ -476,7 +511,7 @@ export async function fetchYouTubeChannelDetails(
 
         if (typeof window !== "undefined") {
           try {
-            localStorage.setItem(`yt_ch_v3_${cleanKey}`, JSON.stringify(details));
+            localStorage.setItem(`yt_ch_v4_${cleanKey}`, JSON.stringify(details));
           } catch {
             // ignore
           }

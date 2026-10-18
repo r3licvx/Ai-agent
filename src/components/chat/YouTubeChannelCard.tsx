@@ -8,25 +8,37 @@ export function YouTubeChannelCard({ channel }: { channel: YouTubeChannelDetails
   const channelUrl = channel.url || `https://www.youtube.com/channel/${channel.id}`;
 
   return (
-    <div className="my-3 w-full max-w-xl overflow-hidden rounded-2xl border border-border/80 bg-background/95 dark:bg-[#1a1b1e] shadow-sm hover:shadow-md transition-all text-foreground group">
+    <div className="my-2.5 w-full max-w-full sm:max-w-xl overflow-hidden rounded-2xl border border-border/80 bg-background/95 dark:bg-[#1a1b1e] shadow-sm hover:shadow-md transition-all text-foreground group box-border">
       {/* Top Header Tag */}
-      <div className="flex items-center justify-between px-3.5 py-2 bg-red-500/[0.04] dark:bg-red-500/[0.08] border-b border-border/50 text-xs">
+      <div className="flex items-center justify-between px-3.5 py-2 bg-muted/30 border-b border-border/50 text-xs min-w-0 max-w-full">
         <a
           href={channelUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 font-bold text-slate-900 dark:text-white hover:text-red-600 transition-colors"
+          className="flex items-center gap-2 font-bold text-slate-900 dark:text-white hover:text-red-600 transition-colors min-w-0 max-w-[70%]"
         >
-          <YouTubeIcon className="h-4 w-6 shrink-0 drop-shadow-2xs" />
-          <span className="font-semibold text-[13px] tracking-tight">YouTube Channel</span>
+          {channel.avatarUrl && !avatarErr ? (
+            <img
+              src={channel.avatarUrl}
+              alt={channel.title}
+              className="size-4.5 rounded-full object-cover shrink-0 border border-border/60"
+            />
+          ) : (
+            <span className="size-4.5 rounded-full bg-red-600 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
+              {channel.title.charAt(0).toUpperCase()}
+            </span>
+          )}
+          <span className="font-semibold text-[12.5px] tracking-tight truncate">
+            {channel.title}
+          </span>
         </a>
         <a
           href={channelUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 font-medium text-[11.5px] text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
+          className="flex items-center gap-1.5 font-medium text-[11px] sm:text-[11.5px] text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors shrink-0"
         >
-          <span>Open on YouTube</span>
+          <span>Open Channel</span>
           <ExternalLink className="size-3" />
         </a>
       </div>

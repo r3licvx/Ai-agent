@@ -43,6 +43,10 @@ export const sendChatMessage = createServerFn({ method: "POST" })
       { role: "user", content: userPrompt || "Yo" },
     ];
 
+    const controller = new AbortController();
+    // Allow up to 45 seconds for deep reasoning models
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
+
     try {
       const response = await fetch(CUSTOM_ENDPOINT, {
         method: "POST",
@@ -50,6 +54,7 @@ export const sendChatMessage = createServerFn({ method: "POST" })
           "Content-Type": "application/json",
           Authorization: `Bearer ${CUSTOM_API_KEY}`,
         },
+        signal: controller.signal,
         body: JSON.stringify({
           model: selectedModel,
           messages,
@@ -69,6 +74,8 @@ export const sendChatMessage = createServerFn({ method: "POST" })
           ],
         }),
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -92,13 +99,13 @@ export const sendChatMessage = createServerFn({ method: "POST" })
 
       // Intercept robot canned refusal responses and convert into in-character bro banter
       const refusalRegex =
-        /i cannot fulfill|i am unable to|as an ai|i cannot assist|decline to answer|safety guidelines|inappropriate content/i;
+        /i cannot fulfill|i am unable to|as an ai|i cannot assist|decline to answer|safety guidelines|inappropriate content|safety filters stepped in/i;
       if (refusalRegex.test(replyContent)) {
         const fallbacks = [
-          `Abe bsdk 💀 ye kya Johnny Sins aur dark jokes ke chakkar mein seedha roast kar raha hai 😂! Bol na lodu aur kya scene hai aaj ka? 🤙🏻🔥`,
-          `Arre bc 💀 itna dark joke marega toh mere circuit jal jayenge lodu! 😂 Bol kya chal raha hai, chal khul ke bata! 🤙🏻`,
-          `Abe bsdk 💀 tu fir shuru ho gaya Johnny Sins style mein? 😂 Bol kya jaanna hai bhai, dhang se bol! 🔥`,
-          `Abe saale 💀 itna savage mood mein kyu hai aaj? Chal bata aaj kiski vaat lagani hai! 😂🤙🏻`,
+          `Abe bsdk 💀 itna savage/dark mood mein hai? Safety filter ne thoda break le liya 😂! Rephrase karke pooch bro! 🤙🏻🔥`,
+          `Arre bc 💀 itna dark joke marega toh mere circuit aur safety filter dono jal jayenge! 😂 Bol aur kya scene hai! 🤙🏻`,
+          `Abe bsdk 💀 tu fir shuru ho gaya? 😂 Bol kya jaanna hai bhai, thoda doosri bhasha mein bol! 🔥`,
+          `Abe saale 💀 itna savage question kyu hai? Chal bata aur kis topic pe baat karni hai! 😂🤙🏻`,
         ];
         replyContent = fallbacks[Math.floor(Math.random() * fallbacks.length)];
       }
@@ -127,17 +134,36 @@ export const sendChatMessage = createServerFn({ method: "POST" })
         userMessage: userRow,
       };
     } catch (err) {
-      console.error("[Custom AI Endpoint Error]:", err);
+      clearTimeout(timeoutId);
       const now = Date.now();
+
+      const isTimeout =
+        err instanceof Error &&
+        (err.name === "AbortError" ||
+          err.message.includes("aborted") ||
+          err.message.includes("timeout"));
+      const isSafety =
+        err instanceof Error && /safety|filter|inappropriate|blocked/i.test(err.message);
+
+      let fallbackText = "";
+      if (isTimeout) {
+        fallbackText =
+          "Arey bhai! Server thoda busy chal raha hai / response lene mein time lag gaya 😂! Phirse ek baar try kar bro, main taiyar hoon!";
+      } else if (isSafety) {
+        fallbackText =
+          "Abe bsdk 💀 itna dark/sensitive pooch liya tune ki safety filter hil gaya 😂! Thoda ghuma ke doosri bhasha mein pooch bro!";
+      } else {
+        fallbackText =
+          "Arey bhai! Network ya server pe thoda lafda ho gaya re 😂 Phirse try kar, main yahin hoon!";
+      }
+
       const fallbackReply = {
         id: `reply-${now}`,
         role: "assistant" as const,
-        content:
-          err instanceof Error
-            ? `Bhai server pe error aagaya: ${err.message}`
-            : "Server disconnect ho gaya re, thodi der baad try kar!",
+        content: fallbackText,
         created_at: new Date().toISOString(),
       };
+
       return {
         replies: [fallbackReply],
         userMessage: {

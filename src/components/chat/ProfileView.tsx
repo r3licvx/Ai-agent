@@ -89,13 +89,10 @@ export function ProfileView({
             <img src={LEOMA_IDENTITY.avatar} alt="AI Agent" className="size-full object-cover" />
           </div>
 
-          <div className="flex items-center justify-center gap-1.5">
-            <h2 className="text-base font-bold text-foreground">{LEOMA_IDENTITY.name}</h2>
-            <img
-              src={LEOMA_IDENTITY.verifiedBadge}
-              alt="Verified"
-              className="size-4 object-contain"
-            />
+          <div className="flex items-center justify-center">
+            <h2 className="text-base font-bold tracking-tight text-foreground">
+              {LEOMA_IDENTITY.name}
+            </h2>
           </div>
 
           <p className="text-xs text-muted-foreground mt-0.5">Your Private AI Companion</p>

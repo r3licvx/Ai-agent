@@ -1,5 +1,5 @@
-import React, { useRef, useState, useMemo, useEffect } from "react";
-import { Copy, Check, ExternalLink } from "lucide-react";
+import React, { useState, useMemo, useEffect } from "react";
+import { Copy, Check, ExternalLink, Pencil, Loader2 } from "lucide-react";
 import { LEOMA_IDENTITY } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import {
@@ -17,6 +17,7 @@ import {
 import { YouTubeVideoCard } from "@/components/chat/YouTubeVideoCard";
 import { YouTubeChannelCard } from "@/components/chat/YouTubeChannelCard";
 import { YouTubeIcon } from "@/components/chat/YouTubeLogo";
+import { InstagramCard, TelegramCard } from "@/components/chat/SocialContactCard";
 
 export type ChatMessage = {
   id: string;
@@ -28,12 +29,9 @@ export type ChatMessage = {
 
 function formatMathSymbols(text: string): string {
   let str = text;
-  // Convert fractions \frac{a}{b} -> (a / b)
   str = str.replace(/\\d?frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1 / $2)");
-  // Convert square roots \sqrt{x} -> √(x)
   str = str.replace(/\\sqrt\{([^{}]+)\}/g, "√($1)");
   str = str.replace(/\\sqrt\[([^{}]+)\]\{([^{}]+)\}/g, "$1√($2)");
-  // Common math symbols
   str = str.replace(/\\times\b/g, "×");
   str = str.replace(/\\cdot\b/g, "·");
   str = str.replace(/\\div\b/g, "÷");
@@ -55,7 +53,6 @@ function formatMathSymbols(text: string): string {
   str = str.replace(/\\text\{([^{}]+)\}/g, "$1");
   str = str.replace(/\\mathbf\{([^{}]+)\}/g, "$1");
   str = str.replace(/\\mathit\{([^{}]+)\}/g, "$1");
-  // Powers & superscripts
   str = str.replace(/\^2\b|\^\{2\}/g, "²");
   str = str.replace(/\^3\b|\^\{3\}/g, "³");
   str = str.replace(/\^0\b|\^\{0\}/g, "⁰");
@@ -84,7 +81,6 @@ function MarkdownContent({
   };
 
   const elements = useMemo(() => {
-    // Sanitize broken markdown links and remove any hallucinated googleusercontent links
     const cleanContent = content
       .replace(/https?:\/\/googleusercontent\.com\/[^\s)]+/gi, "")
       .replace(/\[([^\]]+)\]\s*\n\s*\((https?:\/\/[^\s)]+)\)/g, "[$1]($2)");
@@ -100,17 +96,8 @@ function MarkdownContent({
       const cleanStr = formatMathSymbols(str);
       const tokens: React.ReactNode[] = [];
 
-      // Regex matches:
-      // 1. Markdown link: [Title](url)
-      // 2. Bold: **text**
-      // 3. Inline code: `code`
-      // 4. Inline math: $math$
-      // 5. Italic: *italic*
-      // 6. YouTube video URL
-      // 7. YouTube channel URL
-      // 8. General URL
       const regex =
-        /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*.*?\*\*|`.*?`|\$[^$]+?\$|\*[^\s*][^*]*[^\s*]\*|(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^\s]*&)?v=|shorts\/|embed\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}(?:[^\s<>"')]*)|(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:channel\/UC[a-zA-Z0-9_-]{22}|@[a-zA-Z0-9_.-]+|c\/[a-zA-Z0-9_.-]+)(?:[^\s<>"')]*)|https?:\/\/[^\s<>"')]+)/g;
+        /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*.*?\*\*|`.*?`|\$[^$]+?\$|\*[^\s*][^*]*[^\s*]\*|@umang\.dl|@Umangexe|(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^\s]*&)?v=|shorts\/|embed\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}(?:[^\s<>"')]*)|(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:channel\/UC[a-zA-Z0-9_-]{22}|@[a-zA-Z0-9_.-]+|c\/[a-zA-Z0-9_.-]+)(?:[^\s<>"')]*)|https?:\/\/[^\s<>"')]+)/g;
 
       let lastIdx = 0;
       let match: RegExpExecArray | null;
@@ -128,11 +115,11 @@ function MarkdownContent({
             const label = linkMatch[1];
             const targetUrl = linkMatch[2];
 
-            // If it's a YouTube video
             if (isYouTubeVideoUrl(targetUrl)) {
               const videoId = getYouTubeVideoId(targetUrl);
               const video = videoId && videoMap ? videoMap[videoId] : undefined;
               const displayTitle = video?.title || label || "YouTube Video";
+              const chAvatar = video?.channelAvatarUrl;
 
               tokens.push(
                 <a
@@ -140,27 +127,36 @@ function MarkdownContent({
                   href={targetUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-bold text-[13.5px] transition-all border border-red-500/25 hover:border-red-500/40 align-middle shadow-2xs group/yt no-underline"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-muted/60 hover:bg-muted text-foreground font-bold text-[13px] sm:text-[13.5px] transition-all border border-border/60 align-middle shadow-2xs group/yt no-underline min-w-0"
                   title={`Watch "${displayTitle}" on YouTube`}
                 >
-                  <YouTubeIcon className="h-3.5 w-5 shrink-0 drop-shadow-2xs" />
-                  <span className="underline decoration-red-500/40 group-hover/yt:decoration-red-500 font-bold max-w-[280px] sm:max-w-[420px] truncate">
+                  {chAvatar ? (
+                    <img
+                      src={chAvatar}
+                      alt=""
+                      className="size-4 rounded-full object-cover shrink-0"
+                    />
+                  ) : (
+                    <span className="size-4 rounded-full bg-red-600 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
+                      {(video?.channelTitle || displayTitle).charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="underline decoration-border group-hover/yt:decoration-foreground font-bold max-w-[200px] sm:max-w-[360px] truncate">
                     {displayTitle}
                   </span>
-                  <ExternalLink className="size-3 text-red-500/80 shrink-0 opacity-80 group-hover/yt:opacity-100" />
+                  <ExternalLink className="size-3 text-muted-foreground shrink-0 opacity-80 group-hover/yt:opacity-100" />
                 </a>,
               );
               lastIdx = regex.lastIndex;
               continue;
             }
 
-            // If it's a YouTube channel
             if (isYouTubeChannelUrl(targetUrl)) {
               const chInfo = getYouTubeChannelKey(targetUrl);
               const key = chInfo?.key.toLowerCase();
               const channel = key && channelMap ? channelMap[key] : undefined;
               const displayTitle = channel?.title || label || "YouTube Channel";
+              const chAvatar = channel?.avatarUrl;
 
               tokens.push(
                 <a
@@ -168,29 +164,36 @@ function MarkdownContent({
                   href={targetUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-bold text-[13.5px] transition-all border border-red-500/25 hover:border-red-500/40 align-middle shadow-2xs group/yt no-underline"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-muted/60 hover:bg-muted text-foreground font-bold text-[13px] sm:text-[13.5px] transition-all border border-border/60 align-middle shadow-2xs group/yt no-underline min-w-0"
                   title={`Visit "${displayTitle}" on YouTube`}
                 >
-                  <YouTubeIcon className="h-3.5 w-5 shrink-0 drop-shadow-2xs" />
-                  <span className="underline decoration-red-500/40 group-hover/yt:decoration-red-500 font-bold max-w-[280px] sm:max-w-[420px] truncate">
+                  {chAvatar ? (
+                    <img
+                      src={chAvatar}
+                      alt=""
+                      className="size-4 rounded-full object-cover shrink-0"
+                    />
+                  ) : (
+                    <span className="size-4 rounded-full bg-red-600 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
+                      {displayTitle.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="underline decoration-border group-hover/yt:decoration-foreground font-bold max-w-[200px] sm:max-w-[360px] truncate">
                     {displayTitle}
                   </span>
-                  <ExternalLink className="size-3 text-red-500/80 shrink-0 opacity-80 group-hover/yt:opacity-100" />
+                  <ExternalLink className="size-3 text-muted-foreground shrink-0 opacity-80 group-hover/yt:opacity-100" />
                 </a>,
               );
               lastIdx = regex.lastIndex;
               continue;
             }
 
-            // General link
             tokens.push(
               <a
                 key={match.index}
                 href={targetUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
                 className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-[13.5px] underline transition-colors"
               >
                 <span>{label}</span>
@@ -236,12 +239,41 @@ function MarkdownContent({
               {token.slice(1, -1)}
             </em>,
           );
+        } else if (token === "@umang.dl") {
+          // Instagram handle highlight badge
+          tokens.push(
+            <a
+              key={match.index}
+              href="https://instagram.com/umang.dl"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-lg bg-gradient-to-r from-[#f09433]/20 via-[#dc2743]/20 to-[#bc1888]/20 text-pink-600 dark:text-pink-400 font-bold text-[13px] border border-pink-500/30 hover:border-pink-500/60 transition-all no-underline align-baseline"
+            >
+              <span>@umang.dl</span>
+              <ExternalLink className="size-2.5" />
+            </a>,
+          );
+        } else if (token === "@Umangexe") {
+          // Telegram handle highlight badge
+          tokens.push(
+            <a
+              key={match.index}
+              href="https://t.me/Umangexe"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-lg bg-[#229ED9]/15 text-[#229ED9] dark:text-sky-400 font-bold text-[13px] border border-sky-500/30 hover:border-sky-500/60 transition-all no-underline align-baseline"
+            >
+              <span>@Umangexe</span>
+              <ExternalLink className="size-2.5" />
+            </a>,
+          );
         } else if (isYouTubeVideoUrl(token)) {
           const videoId = getYouTubeVideoId(token);
           const trailingMatch = token.match(/[.,!?:;)"']+$/);
           const trailingPunct = trailingMatch ? trailingMatch[0] : "";
           const video = videoId && videoMap ? videoMap[videoId] : undefined;
           const displayTitle = video?.title || "YouTube Video";
+          const chAvatar = video?.channelAvatarUrl;
 
           tokens.push(
             <span key={match.index} className="inline-flex items-center align-baseline">
@@ -249,15 +281,24 @@ function MarkdownContent({
                 href={videoId ? `https://www.youtube.com/watch?v=${videoId}` : token}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-bold text-[13.5px] transition-all border border-red-500/25 hover:border-red-500/40 align-middle shadow-2xs group/yt no-underline"
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-muted/60 hover:bg-muted text-foreground font-bold text-[13px] sm:text-[13.5px] transition-all border border-border/60 align-middle shadow-2xs group/yt no-underline min-w-0"
                 title={video?.title ? `Watch "${video.title}" on YouTube` : "Watch on YouTube"}
               >
-                <YouTubeIcon className="h-3.5 w-5 shrink-0 drop-shadow-2xs" />
-                <span className="underline decoration-red-500/40 group-hover/yt:decoration-red-500 font-bold max-w-[280px] sm:max-w-[420px] truncate">
+                {chAvatar ? (
+                  <img
+                    src={chAvatar}
+                    alt=""
+                    className="size-4 rounded-full object-cover shrink-0"
+                  />
+                ) : (
+                  <span className="size-4 rounded-full bg-red-600 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
+                    {(video?.channelTitle || displayTitle).charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <span className="underline decoration-border group-hover/yt:decoration-foreground font-bold max-w-[200px] sm:max-w-[360px] truncate">
                   {displayTitle}
                 </span>
-                <ExternalLink className="size-3 text-red-500/80 shrink-0 opacity-80 group-hover/yt:opacity-100" />
+                <ExternalLink className="size-3 text-muted-foreground shrink-0 opacity-80 group-hover/yt:opacity-100" />
               </a>
               {trailingPunct ? <span>{trailingPunct}</span> : null}
             </span>,
@@ -270,6 +311,7 @@ function MarkdownContent({
           const channel = key && channelMap ? channelMap[key] : undefined;
           const displayTitle =
             channel?.title || (chInfo?.isHandle ? `@${chInfo.key}` : "YouTube Channel");
+          const chAvatar = channel?.avatarUrl;
 
           tokens.push(
             <span key={match.index} className="inline-flex items-center align-baseline">
@@ -282,15 +324,24 @@ function MarkdownContent({
                 }
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-bold text-[13.5px] transition-all border border-red-500/25 hover:border-red-500/40 align-middle shadow-2xs group/yt no-underline"
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-muted/60 hover:bg-muted text-foreground font-bold text-[13px] sm:text-[13.5px] transition-all border border-border/60 align-middle shadow-2xs group/yt no-underline min-w-0"
                 title={`Visit "${displayTitle}" channel on YouTube`}
               >
-                <YouTubeIcon className="h-3.5 w-5 shrink-0 drop-shadow-2xs" />
-                <span className="underline decoration-red-500/40 group-hover/yt:decoration-red-500 font-bold max-w-[280px] sm:max-w-[420px] truncate">
+                {chAvatar ? (
+                  <img
+                    src={chAvatar}
+                    alt=""
+                    className="size-4 rounded-full object-cover shrink-0"
+                  />
+                ) : (
+                  <span className="size-4 rounded-full bg-red-600 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
+                    {displayTitle.charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <span className="underline decoration-border group-hover/yt:decoration-foreground font-bold max-w-[200px] sm:max-w-[360px] truncate">
                   {displayTitle}
                 </span>
-                <ExternalLink className="size-3 text-red-500/80 shrink-0 opacity-80 group-hover/yt:opacity-100" />
+                <ExternalLink className="size-3 text-muted-foreground shrink-0 opacity-80 group-hover/yt:opacity-100" />
               </a>
               {trailingPunct ? <span>{trailingPunct}</span> : null}
             </span>,
@@ -306,7 +357,6 @@ function MarkdownContent({
                 href={cleanUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
                 className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-[13px] underline transition-colors"
               >
                 <span className="max-w-[260px] truncate">{cleanUrl}</span>
@@ -329,7 +379,6 @@ function MarkdownContent({
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i] ?? "";
 
-      // Code block start/end
       if (line.trim().startsWith("```")) {
         if (!inCodeBlock) {
           inCodeBlock = true;
@@ -378,7 +427,7 @@ function MarkdownContent({
         continue;
       }
 
-      // Block Math Equation ($$ ... $$ or \[ ... \])
+      // Block Math Equation
       if (/^\s*(\$\$|\\\[)/.test(line) || /(\$\$|\\\])\s*$/.test(line)) {
         const mathContent = formatMathSymbols(
           line.replace(/^\s*(\$\$|\\\[)|(\$\$|\\\])\s*$/g, "").trim(),
@@ -396,7 +445,7 @@ function MarkdownContent({
         }
       }
 
-      // Headers (### or ## or #)
+      // Headers
       if (/^#{1,3}\s/.test(line)) {
         const text = line.replace(/^#{1,3}\s+/, "");
         parsedElements.push(
@@ -410,7 +459,7 @@ function MarkdownContent({
         continue;
       }
 
-      // Bullet points (- or * or •)
+      // Bullet points
       if (/^(\s*[-*•])\s+/.test(line)) {
         const text = line.replace(/^(\s*[-*•])\s+/, "");
         parsedElements.push(
@@ -424,7 +473,7 @@ function MarkdownContent({
         continue;
       }
 
-      // Numbered lists (1. or 2.)
+      // Numbered lists
       if (/^\s*\d+\.\s+/.test(line)) {
         const matchNum = line.match(/^\s*(\d+)\.\s+(.*)/);
         if (matchNum) {
@@ -442,13 +491,11 @@ function MarkdownContent({
         }
       }
 
-      // Empty lines (spacing)
       if (!line.trim()) {
         parsedElements.push(<div key={`empty-${i}`} className="h-2" />);
         continue;
       }
 
-      // Regular paragraph with solid readable contrast
       parsedElements.push(
         <div
           key={`para-${i}`}
@@ -467,18 +514,11 @@ function MarkdownContent({
 
 export function MessageBubble({
   message,
-  isSelected,
-  isSelectMode,
-  onHold,
-  onClick,
+  onEdit,
 }: {
   message: ChatMessage;
-  isSelected?: boolean;
-  isSelectMode?: boolean;
-  onHold: (m: ChatMessage) => void;
-  onClick?: (m: ChatMessage) => void;
+  onEdit?: (m: ChatMessage) => void;
 }) {
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mine = message.role === "user";
   const [copied, setCopied] = useState(false);
 
@@ -490,6 +530,15 @@ export function MessageBubble({
   // YouTube channel extraction and live details fetching
   const [channelMap, setChannelMap] = useState<Record<string, YouTubeChannelDetails>>({});
   const channelList = useMemo(() => extractYouTubeChannels(message.content), [message.content]);
+
+  // Check for Umang social mentions to display dedicated cards
+  const hasInstagramMention = useMemo(() => {
+    return /@umang\.dl|instagram\.com\/umang\.dl/i.test(message.content);
+  }, [message.content]);
+
+  const hasTelegramMention = useMemo(() => {
+    return /@Umangexe|t\.me\/Umangexe/i.test(message.content);
+  }, [message.content]);
 
   useEffect(() => {
     if (videoIds.length === 0) return;
@@ -517,14 +566,6 @@ export function MessageBubble({
     };
   }, [channelList]);
 
-  const start = () => {
-    timer.current = setTimeout(() => onHold(message), 450);
-  };
-  const cancel = () => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-  };
-
   const handleCopyMessage = () => {
     void navigator.clipboard?.writeText(message.content);
     setCopied(true);
@@ -533,49 +574,44 @@ export function MessageBubble({
 
   return (
     <div className={cn("px-4 my-4 transition-colors", mine ? "flex justify-end" : "block")}>
-      {/* Selection Checkbox */}
-      {isSelectMode && (
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            if (onClick) onClick(message);
-          }}
-          className={cn(
-            "flex size-5.5 shrink-0 items-center justify-center rounded-full border-2 transition-all cursor-pointer mb-2 mr-2 select-none",
-            isSelected
-              ? "bg-primary border-primary text-primary-foreground shadow-xs scale-105"
-              : "border-muted-foreground/35 hover:border-primary/60 bg-background/80 hover:bg-background",
-          )}
-          title={isSelected ? "Deselect" : "Select"}
-        >
-          {isSelected && <Check className="size-3.5 stroke-[3]" />}
-        </div>
-      )}
-
       {mine ? (
         /* Gemini Style User Message: Soft Pill Capsule on Right */
-        <div className="flex flex-col items-end max-w-[85%] sm:max-w-[75%]">
-          <div
-            role="button"
-            tabIndex={0}
-            onPointerDown={start}
-            onPointerUp={cancel}
-            onPointerLeave={cancel}
-            onPointerCancel={cancel}
-            onClick={() => {
-              if (onClick) onClick(message);
-            }}
-            className={cn(
-              "rounded-[22px] bg-[#f0f4f9] dark:bg-[#282a2c] text-slate-900 dark:text-zinc-100 px-5 py-3 text-[15px] sm:text-[16px] font-normal leading-[1.6] break-words shadow-xs select-text",
-              isSelected ? "ring-2 ring-primary ring-offset-2" : "",
-            )}
-          >
+        <div className="flex flex-col items-end max-w-[85%] sm:max-w-[75%] group/user">
+          <div className="rounded-[22px] bg-[#f0f4f9] dark:bg-[#282a2c] text-slate-900 dark:text-zinc-100 px-5 py-3 text-[15px] sm:text-[16px] font-normal leading-[1.6] break-words shadow-xs select-text">
             <MarkdownContent
               content={message.content}
               videoMap={videoMap}
               channelMap={channelMap}
             />
           </div>
+
+          {/* User Action Row: Copy and Edit Pencil button */}
+          <div className="flex items-center gap-1.5 mt-1.5 pr-2 opacity-80 group-hover/user:opacity-100 transition-opacity">
+            {onEdit && (
+              <button
+                type="button"
+                onClick={() => onEdit(message)}
+                className="flex items-center justify-center size-7 rounded-full hover:bg-secondary active:scale-90 transition-all cursor-pointer text-muted-foreground hover:text-foreground"
+                title="Edit message"
+              >
+                <Pencil className="size-3.5" />
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleCopyMessage}
+              className="flex items-center justify-center size-7 rounded-full hover:bg-secondary active:scale-90 transition-all cursor-pointer text-muted-foreground hover:text-foreground"
+              title="Copy prompt"
+            >
+              {copied ? (
+                <Check className="size-3.5 text-emerald-500" />
+              ) : (
+                <Copy className="size-3.5" />
+              )}
+            </button>
+          </div>
+
           {/* YouTube video cards for user sent links */}
           {videoIds.length > 0 && (
             <div className="w-full mt-2.5 space-y-2">
@@ -599,31 +635,19 @@ export function MessageBubble({
       ) : (
         /* Gemini Style AI Response: Native Canvas with AI Logo Header */
         <div className="w-full max-w-3xl select-text pt-1">
-          {/* AI Header with Static Logo (Frozen after generation) */}
+          {/* AI Header with Static Logo (AARAMB with clean 2-color gradient) */}
           <div className="flex items-center gap-2 mb-2 select-none">
             <img
               src={LEOMA_IDENTITY.avatar}
-              alt="AI Agent"
+              alt="AARAMB"
               className="size-6 rounded-full object-cover border border-primary/20 shadow-xs"
             />
-            <span className="text-[13px] font-bold text-foreground">{LEOMA_IDENTITY.name}</span>
+            <span className="text-[13.5px] font-bold tracking-tight text-foreground">
+              {LEOMA_IDENTITY.name}
+            </span>
           </div>
 
-          <div
-            role="button"
-            tabIndex={0}
-            onPointerDown={start}
-            onPointerUp={cancel}
-            onPointerLeave={cancel}
-            onPointerCancel={cancel}
-            onClick={() => {
-              if (onClick) onClick(message);
-            }}
-            className={cn(
-              "text-slate-950 dark:text-zinc-50 text-[15.5px] sm:text-[16px] leading-[1.7] break-words pl-8",
-              isSelected ? "bg-primary/5 p-3 rounded-2xl ring-2 ring-primary" : "",
-            )}
-          >
+          <div className="text-slate-950 dark:text-zinc-50 text-[15.5px] sm:text-[16px] leading-[1.7] break-words pl-8">
             <MarkdownContent
               content={message.content}
               videoMap={videoMap}
@@ -654,14 +678,15 @@ export function MessageBubble({
               </div>
             )}
 
-            {/* Gemini Action Row: Copy Button */}
-            <div className="flex items-center gap-3 mt-4 text-muted-foreground">
+            {/* Creator Social Connection Cards (Instagram & Telegram) */}
+            {hasInstagramMention && <InstagramCard />}
+            {hasTelegramMention && <TelegramCard />}
+
+            {/* Action Row: Copy button (Edit button removed for AI responses) */}
+            <div className="flex items-center gap-2 mt-4 text-muted-foreground">
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCopyMessage();
-                }}
+                onClick={handleCopyMessage}
                 className="flex items-center justify-center size-8 rounded-full hover:bg-secondary active:scale-90 transition-all cursor-pointer text-muted-foreground hover:text-foreground"
                 title="Copy response"
               >
@@ -673,9 +698,9 @@ export function MessageBubble({
               </button>
             </div>
 
-            {/* Gemini Disclaimer */}
+            {/* Disclaimer */}
             <p className="text-[12px] font-medium text-muted-foreground/80 mt-1.5 select-none">
-              AI Agent can make mistakes.
+              {LEOMA_IDENTITY.name} can make mistakes.
             </p>
           </div>
         </div>
@@ -684,27 +709,25 @@ export function MessageBubble({
   );
 }
 
-// Typing Bubble: Gemini Canvas with animated GIF avatar while thinking (No "Thinking..." text)
+// Typing Bubble: Ultra-Clean Aesthetic Floating Thinking Pill
 export function TypingBubble() {
   return (
-    <div className="px-4 my-3 max-w-3xl animate-fade-in">
-      <div className="flex items-center gap-2 select-none">
-        <div className="relative size-6 shrink-0">
-          <img
-            src={LEOMA_IDENTITY.thinkingAvatar}
-            alt="AI Agent"
-            className="size-6 rounded-full object-cover shadow-xs border border-primary/30"
+    <div className="px-4 my-2 max-w-3xl animate-in fade-in slide-in-from-bottom-1 duration-200 pl-8 select-none">
+      <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-[#f0f4f9]/90 dark:bg-[#1e1f20]/90 border border-border/40 shadow-2xs backdrop-blur-md">
+        <div className="flex items-center gap-1.5 py-0.5">
+          <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+          <span
+            className="size-1.5 rounded-full bg-primary/75 animate-pulse"
+            style={{ animationDelay: "150ms" }}
+          />
+          <span
+            className="size-1.5 rounded-full bg-primary/50 animate-pulse"
+            style={{ animationDelay: "300ms" }}
           />
         </div>
-        <div className="flex items-center gap-1.5 py-1">
-          {[0, 1, 2].map((i) => (
-            <span
-              key={i}
-              className="bg-primary/80 size-2 animate-bounce rounded-full"
-              style={{ animationDelay: `${i * 0.16}s` }}
-            />
-          ))}
-        </div>
+        <span className="text-[12px] font-semibold tracking-tight text-foreground/80">
+          Aarambh is thinking...
+        </span>
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { motion } from "motion/react";
 import { Copy, Check, ExternalLink, Pencil, RotateCcw } from "lucide-react";
 import { LEOMA_IDENTITY } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -743,7 +744,12 @@ export function MessageBubble({
   };
 
   return (
-    <div className={cn("px-4 my-4 transition-colors", mine ? "flex justify-end" : "block")}>
+    <motion.div
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      className={cn("px-4 my-4 transition-colors", mine ? "flex justify-end" : "block")}
+    >
       {mine ? (
         /* Clean User Message */
         <div className="flex flex-col items-end max-w-[85%] sm:max-w-[75%] group/user">
@@ -805,17 +811,24 @@ export function MessageBubble({
       ) : (
         /* Gemini Style AI Response: Native Canvas with AI Logo Header */
         <div className="w-full max-w-3xl select-text pt-1">
-          {/* AI Header with Static Logo (AARAMB with clean 2-color gradient) */}
+          {/* AI Header with Static Logo (Aarambh AI with clean 2-color gradient) */}
           <div className="flex items-center gap-2 mb-2 select-none">
             <img
               src={LEOMA_IDENTITY.avatar}
-              alt="AARAMB"
+              alt={LEOMA_IDENTITY.name}
               className="size-6 rounded-full object-cover border border-primary/20 shadow-xs"
             />
             <span className="text-[13.5px] font-bold tracking-tight text-foreground">
               {LEOMA_IDENTITY.name}
             </span>
           </div>
+
+          {/* TMDB Movie & Anime Posters positioned at the top, outside pl-8 indentation for full width presence */}
+          {!message.isStreaming && tmdbItems.length > 0 && (
+            <div className="w-full my-1.5 sm:my-2">
+              <TMDBMediaCards items={tmdbItems} />
+            </div>
+          )}
 
           <div className="text-slate-950 dark:text-zinc-50 text-[15px] sm:text-[15.5px] leading-[1.7] break-words pl-8">
             <MarkdownContent
@@ -826,9 +839,6 @@ export function MessageBubble({
             {message.isStreaming && (
               <span className="inline-block size-2 ml-1 rounded-full bg-primary animate-pulse align-middle" />
             )}
-
-            {/* TMDB Movie & Anime Posters for explicitly recommended titles (Opens directly on TMDB) */}
-            {!message.isStreaming && tmdbItems.length > 0 && <TMDBMediaCards items={tmdbItems} />}
 
             {/* YouTube Video Details Preview Cards at the bottom */}
             {!message.isStreaming && videoIds.length > 0 && (
@@ -896,14 +906,20 @@ export function MessageBubble({
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
 // Typing Bubble: Ultra-Clean Aesthetic Floating Thinking Pill
 export function TypingBubble() {
   return (
-    <div className="px-4 my-2 max-w-3xl animate-in fade-in slide-in-from-bottom-1 duration-200 pl-8 select-none">
+    <motion.div
+      initial={{ opacity: 0, y: 6, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.18 }}
+      className="px-4 my-2 max-w-3xl pl-8 select-none"
+    >
       <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-[#f0f4f9]/90 dark:bg-[#1e1f20]/90 border border-border/40 shadow-2xs backdrop-blur-md">
         <div className="flex items-center gap-1.5 py-0.5">
           <span className="size-1.5 rounded-full bg-primary animate-pulse" />
@@ -920,6 +936,6 @@ export function TypingBubble() {
           Aarambh is thinking...
         </span>
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -57,12 +57,12 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
 
   return (
     <div className="relative my-3.5 w-full group/strip">
-      {/* Left Scroll Button */}
+      {/* Left Scroll Button (Desktop hover only so it never blocks posters on mobile touch devices) */}
       {canScrollLeft && (
         <button
           type="button"
           onClick={() => handleScroll("left")}
-          className="absolute -left-3 top-1/2 -translate-y-1/2 z-20 size-8 rounded-full bg-background/90 hover:bg-background border border-border shadow-md flex items-center justify-center text-foreground hover:scale-105 active:scale-95 transition-all cursor-pointer backdrop-blur-xs"
+          className="hidden md:flex absolute -left-3 top-1/2 -translate-y-1/2 z-20 size-8 rounded-full bg-background/90 hover:bg-background border border-border shadow-md items-center justify-center text-foreground hover:scale-105 active:scale-95 transition-all cursor-pointer backdrop-blur-xs"
           title="Scroll Left"
           aria-label="Scroll Left"
         >
@@ -70,12 +70,12 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
         </button>
       )}
 
-      {/* Right Scroll Button */}
+      {/* Right Scroll Button (Desktop hover only) */}
       {canScrollRight && (
         <button
           type="button"
           onClick={() => handleScroll("right")}
-          className="absolute -right-3 top-1/2 -translate-y-1/2 z-20 size-8 rounded-full bg-background/90 hover:bg-background border border-border shadow-md flex items-center justify-center text-foreground hover:scale-105 active:scale-95 transition-all cursor-pointer backdrop-blur-xs"
+          className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 size-8 rounded-full bg-background/90 hover:bg-background border border-border shadow-md items-center justify-center text-foreground hover:scale-105 active:scale-95 transition-all cursor-pointer backdrop-blur-xs"
           title="Scroll Right"
           aria-label="Scroll Right"
         >
@@ -83,11 +83,11 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
         </button>
       )}
 
-      {/* Clean horizontal scroll strip with natural touch & wheel scroll, zero empty margins */}
+      {/* Clean horizontal scroll strip with full screen width bleed on mobile and natural touch & wheel scroll */}
       <div
         ref={scrollRef}
         onWheel={handleWheel}
-        className="flex gap-3 overflow-x-auto pb-2 no-scrollbar scroll-smooth overscroll-x-contain"
+        className="flex gap-3 overflow-x-auto pb-2 no-scrollbar scroll-smooth overscroll-x-contain -mx-3.5 px-3.5 sm:mx-0 sm:px-0"
       >
         {items.map((movie) => {
           const tmdbUrl = `https://www.themoviedb.org/${movie.mediaType}/${movie.id}`;
@@ -95,7 +95,7 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
           return (
             <div
               key={`${movie.mediaType}-${movie.id}`}
-              className="shrink-0 w-[140px] sm:w-[155px] rounded-2xl overflow-hidden bg-card border border-border/70 shadow-xs hover:shadow-md hover:border-primary/50 transition-all duration-200 group/card flex flex-col justify-between select-none"
+              className="shrink-0 w-[150px] sm:w-[165px] rounded-2xl overflow-hidden bg-card border border-border/70 shadow-xs hover:shadow-md hover:border-primary/50 transition-all duration-200 group/card flex flex-col justify-between select-none"
             >
               {/* Poster and Title Link (Navigates to TMDB) */}
               <a

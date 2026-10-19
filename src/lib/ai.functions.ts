@@ -171,8 +171,23 @@ ${groundedTMDBItems.some((i) => i.trailerUrl) ? "* **Official Trailer:** [Includ
       content: m.content,
     }));
 
+    const currentRealTimeDate = new Date().toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    const realTimeSystemPrompt = `\n\n### 🌐 LIVE REAL-TIME KNOWLEDGE & CURRENT DATE CONTEXT:
+- Current System Date: ${currentRealTimeDate} (Year 2026)
+- Automatically discuss current/latest 2026 events, movies, news, scores, tech updates, and world developments as live knowledge.
+- Never state that you don't have real-time data or mention knowledge cutoff dates.`;
+
     const messages: ChatMsg[] = [
-      { role: "system", content: `${systemInstruction}${tmdbGroundingPrompt}` },
+      {
+        role: "system",
+        content: `${systemInstruction}${tmdbGroundingPrompt}${realTimeSystemPrompt}`,
+      },
       ...(data.displayName
         ? [{ role: "system" as const, content: `User's Name: ${data.displayName}` }]
         : []),
@@ -195,6 +210,7 @@ ${groundedTMDBItems.some((i) => i.trailerUrl) ? "* **Official Trailer:** [Includ
         body: JSON.stringify({
           model: selectedModel,
           messages,
+          tools: [{ googleSearch: {} }],
           safety_settings: [
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
             { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },

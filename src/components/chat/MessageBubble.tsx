@@ -861,10 +861,6 @@ export function MessageBubble({
               </div>
             )}
 
-            {/* Creator Social Connection Cards (Instagram & Telegram) */}
-            {hasInstagramMention && <InstagramCard />}
-            {hasTelegramMention && <TelegramCard />}
-
             {/* Action Row: Copy button & Regenerate button */}
             <div className="flex items-center gap-2.5 mt-4 text-muted-foreground flex-wrap">
               <button

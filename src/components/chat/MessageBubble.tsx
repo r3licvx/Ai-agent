@@ -98,7 +98,7 @@ function MarkdownContent({
       const tokens: React.ReactNode[] = [];
 
       const regex =
-        /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*.*?\*\*|`.*?`|\$[^$]+?\$|\*[^\s*][^*]*[^\s*]\*|@umang\.dl|@Umangexe|(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^\s]*&)?v=|shorts\/|embed\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}(?:[^\s<>"')]*)|(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:channel\/UC[a-zA-Z0-9_-]{22}|@[a-zA-Z0-9_.-]+|c\/[a-zA-Z0-9_.-]+)(?:[^\s<>"')]*)|https?:\/\/[^\s<>"')]+)/gi;
+        /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*.*?\*\*|`.*?`|\$[^$]+?\$|\*[^\s*][^*]*[^\s*]\*|@umang\.dl|@Umangexe|(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^\s]*&)?v=|shorts\/|embed\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}(?:[^\s<>"')]*)|(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:channel\/[a-zA-Z0-9_-]{18,34}|@[a-zA-Z0-9_.-]+|c\/[a-zA-Z0-9_.-]+)(?:[^\s<>"')]*)|https?:\/\/[^\s<>"')]+)/gi;
 
       let lastIdx = 0;
       let match: RegExpExecArray | null;
@@ -150,15 +150,52 @@ function MarkdownContent({
               continue;
             }
 
+            if (isYouTubeChannelUrl(targetUrl)) {
+              const chInfo = getYouTubeChannelKey(targetUrl);
+              const key = chInfo?.key.toLowerCase();
+              const channel = key && channelMap ? channelMap[key] : undefined;
+              const displayTitle =
+                channel?.title ||
+                label ||
+                (chInfo?.isHandle ? `@${chInfo.key}` : "YouTube Channel");
+              const chAvatar = channel?.avatarUrl;
+
+              tokens.push(
+                <a
+                  key={match.index}
+                  href={targetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-muted/60 hover:bg-muted text-foreground font-bold text-[13px] sm:text-[13.5px] transition-all border border-border/60 align-middle shadow-2xs group/yt no-underline min-w-0"
+                  title={`Visit "${displayTitle}" channel on YouTube`}
+                >
+                  <YouTubeIcon className="size-4 shrink-0" />
+                  {chAvatar && (
+                    <img
+                      src={chAvatar}
+                      alt=""
+                      className="size-3.5 rounded-full object-cover shrink-0"
+                    />
+                  )}
+                  <span className="underline decoration-border group-hover/yt:decoration-foreground font-bold max-w-[180px] sm:max-w-[300px] truncate">
+                    {displayTitle}
+                  </span>
+                  <ExternalLink className="size-3 text-muted-foreground shrink-0 opacity-80 group-hover/yt:opacity-100" />
+                </a>,
+              );
+              lastIdx = regex.lastIndex;
+              continue;
+            }
+
             tokens.push(
               <a
                 key={match.index}
                 href={targetUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-[13.5px] underline transition-colors"
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 mx-0.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-[13px] sm:text-[13.5px] underline transition-colors max-w-full overflow-hidden align-middle"
               >
-                <span>{label}</span>
+                <span className="max-w-[180px] sm:max-w-[300px] truncate">{label}</span>
                 <ExternalLink className="size-3 shrink-0" />
               </a>,
             );
@@ -315,16 +352,35 @@ function MarkdownContent({
           const trailingPunct = trailingMatch ? trailingMatch[0] : "";
           const cleanUrl = trailingPunct ? token.slice(0, -trailingPunct.length) : token;
 
+          let shortLabel = cleanUrl;
+          try {
+            const parsed = new URL(cleanUrl);
+            const host = parsed.hostname.replace(/^www\./, "");
+            if (parsed.pathname && parsed.pathname !== "/") {
+              shortLabel = `${host}${parsed.pathname}`;
+            } else {
+              shortLabel = host;
+            }
+          } catch {
+            shortLabel = cleanUrl;
+          }
+
           tokens.push(
-            <span key={match.index} className="inline-flex items-center align-baseline">
+            <span
+              key={match.index}
+              className="inline-flex items-center align-baseline max-w-full min-w-0"
+            >
               <a
                 href={cleanUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-[13px] underline transition-colors"
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-0.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-bold text-[12.5px] sm:text-[13px] no-underline transition-colors max-w-full min-w-0 overflow-hidden shadow-2xs align-middle"
+                title={cleanUrl}
               >
-                <span className="max-w-[260px] truncate">{cleanUrl}</span>
-                <ExternalLink className="size-3 shrink-0" />
+                <span className="max-w-[160px] sm:max-w-[260px] truncate inline-block align-middle font-semibold">
+                  {shortLabel}
+                </span>
+                <ExternalLink className="size-3 shrink-0 opacity-80" />
               </a>
               {trailingPunct ? <span>{trailingPunct}</span> : null}
             </span>,
@@ -830,7 +886,7 @@ export function MessageBubble({
             </div>
           )}
 
-          <div className="text-slate-950 dark:text-zinc-50 text-[15px] sm:text-[15.5px] leading-[1.7] break-words pl-8">
+          <div className="text-slate-950 dark:text-zinc-50 text-[15px] sm:text-[15.5px] leading-[1.7] break-words max-w-full overflow-hidden min-w-0 pl-8">
             <MarkdownContent
               content={message.content}
               videoMap={videoMap}

@@ -96,7 +96,7 @@ export function extractYouTubeChannels(
 
   // Match youtube.com/channel/UC... or youtube.com/@handle or youtube.com/c/name
   const regex =
-    /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:channel\/(UC[a-zA-Z0-9_-]{22})|@([a-zA-Z0-9_.-]+)|c\/([a-zA-Z0-9_.-]+)|user\/([a-zA-Z0-9_.-]+))(?:[^\s<>"')]*)/gi;
+    /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:channel\/([a-zA-Z0-9_-]{18,34})|@([a-zA-Z0-9_.-]+)|c\/([a-zA-Z0-9_.-]+)|user\/([a-zA-Z0-9_.-]+))(?:[^\s<>"')]*)/gi;
 
   const results: { rawUrl: string; key: string; isHandle: boolean }[] = [];
   const seen = new Set<string>();
@@ -138,14 +138,14 @@ export function getYouTubeVideoId(str: string): string | null {
 }
 
 export function isYouTubeChannelUrl(str: string): boolean {
-  return /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:channel\/UC[a-zA-Z0-9_-]{22}|@[a-zA-Z0-9_.-]+|c\/[a-zA-Z0-9_.-]+)/i.test(
+  return /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:channel\/[a-zA-Z0-9_-]{18,34}|@[a-zA-Z0-9_.-]+|c\/[a-zA-Z0-9_.-]+)/i.test(
     str,
   );
 }
 
 export function getYouTubeChannelKey(str: string): { key: string; isHandle: boolean } | null {
   const match = str.match(
-    /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:channel\/(UC[a-zA-Z0-9_-]{22})|@([a-zA-Z0-9_.-]+)|c\/([a-zA-Z0-9_.-]+))/i,
+    /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:channel\/([a-zA-Z0-9_-]{18,34})|@([a-zA-Z0-9_.-]+)|c\/([a-zA-Z0-9_.-]+))/i,
   );
   if (!match) return null;
   if (match[1]) return { key: match[1], isHandle: false };

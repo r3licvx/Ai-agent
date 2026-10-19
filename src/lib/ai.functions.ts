@@ -56,32 +56,34 @@ export const sendChatMessage = createServerFn({ method: "POST" })
 
     let groundedTMDBItems: TMDBMediaItem[] = [];
 
+    const isIndianQuery =
+      /(?:hindi\s*movie|indian\s*movie|bollywood|tollywood|kollywood|south\s*movie|हिंदी\s*मूवी|भारतीय\s*फिल्म|बॉलीवुड|देसी|इंडिया\s*की\s*मूवी)/i.test(
+        userPrompt,
+      ) ||
+      (/(?:india|indian|इंडिया|भारत|बॉलीवुड)/i.test(userPrompt) &&
+        /(?:best|top|सजेशन|बताओ|मूवी|फिल्म)/i.test(userPrompt)) ||
+      (/(?:इंडिया\s*के\s*लिए|हिंदी\s*में)/i.test(userPrompt) &&
+        /(?:best|top|बताओ|सजेशन|मूवी|फिल्म)/i.test(userPrompt));
+
+    const isTrendingQuery =
+      !isIndianQuery &&
+      /(?:trending|ट्रेन्डिंग|ट्रेंडिंग|popular|top\s*movies|top\s*5\s*movies|top\s*10\s*movies|best\s*movies|नई\s*फिल्में|हालिया\s*फिल्में|आज\s*की\s*ट्रेंडिंग|trending\s*movies|trending\s*series|what\s*to\s*watch|आज\s*की\s*मूवी|पांच\s*मूवी|टॉप\s*मूवी)/i.test(
+        userPrompt,
+      );
+
     // ONLY ground TMDB if user inquiry has positive entertainment intent!
     if (hasEntertainmentIntent) {
-      const isIndianTopMoviesQuery =
-        /(?:hindi\s*movie|indian\s*movie|bollywood|tollywood|kollywood|south\s*movie|हिंदी\s*मूवी|भारतीय\s*फिल्म|बॉलीवुड|देसी|इंडिया\s*की\s*मूवी)/i.test(
-          userPrompt,
-        ) ||
-        (/(?:india|indian|इंडिया|भारत|बॉलीवुड)/i.test(userPrompt) &&
-          /(?:best|top|सजेशन|बताओ|मूवी|फिल्म)/i.test(userPrompt)) ||
-        (/(?:इंडिया\s*के\s*लिए|हिंदी\s*में)/i.test(userPrompt) &&
-          /(?:best|top|बताओ|सजेशन|मूवी|फिल्म)/i.test(userPrompt));
-
-      const isTrendingQuery =
-        !isIndianTopMoviesQuery &&
-        /(?:trending|ट्रेन्डिंग|ट्रेंडिंग|popular|top\s*movies|top\s*5\s*movies|top\s*10\s*movies|best\s*movies|नई\s*फिल्में|हालिया\s*फिल्में|आज\s*की\s*ट्रेंडिंग|trending\s*movies|trending\s*series|what\s*to\s*watch|आज\s*की\s*मूवी|पांच\s*मूवी|टॉप\s*मूवी)/i.test(
-          userPrompt,
-        );
-
-      if (isIndianTopMoviesQuery) {
+      if (isIndianQuery) {
         try {
-          groundedTMDBItems = await fetchTMDBIndianTopMovies();
+          const fetched = await fetchTMDBIndianTopMovies();
+          if (fetched) groundedTMDBItems = fetched;
         } catch (err) {
           console.warn("Failed fetching Indian TMDB for AI grounding:", err);
         }
       } else if (isTrendingQuery) {
         try {
-          groundedTMDBItems = await fetchTMDBTrending("all", "day");
+          const fetched = await fetchTMDBTrending("all", "day");
+          if (fetched) groundedTMDBItems = fetched;
         } catch (err) {
           console.warn("Failed fetching trending TMDB for AI grounding:", err);
         }

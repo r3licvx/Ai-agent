@@ -244,6 +244,23 @@ ${groundedTMDBItems.some((i) => i.trailerUrl) ? "* **Official Trailer:** [Includ
       // Clean reasoning or thinking tags if present in output
       replyContent = replyContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
+      // Clean pseudo tags like <FollowUp label="..." query="..."/> and HTML color tags
+      replyContent = replyContent
+        .replace(
+          /<FollowUp\s+label=(?:"|')([^"']+)(?:"|')\s+query=(?:"|')([^"']+)(?:"|')\s*\/?>/gi,
+          (_, label: string) => `\n\n${label}`,
+        )
+        .replace(/<FollowUp[^>]*\/?>/gi, "")
+        .replace(/<FollowUp[^>]*>[\s\S]*?<\/FollowUp>/gi, "")
+        .replace(
+          /<\/?(?:red|green|yellow|blue|purple|orange|pink|cyan|emerald|amber|rose|FollowUp|query|label|custom|style|tag|color)[^>]*>/gi,
+          "",
+        )
+        .replace(
+          /\[\/?(?:red|green|yellow|blue|purple|orange|pink|cyan|emerald|amber|rose)\]/gi,
+          "",
+        );
+
       // Sanitize any hallucinated googleusercontent links and normalize broken markdown links
       replyContent = replyContent
         .replace(/https?:\/\/googleusercontent\.com\/[^\s)]+/gi, "")

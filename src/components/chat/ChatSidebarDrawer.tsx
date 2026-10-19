@@ -79,8 +79,8 @@ export function ChatSidebarDrawer({
             transition={{ type: "spring", stiffness: 380, damping: 34 }}
             className="fixed inset-y-0 left-0 z-50 w-[290px] sm:w-[320px] bg-background border-r border-border/80 shadow-2xl flex flex-col select-none overflow-hidden"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3.5 border-b border-border/60 bg-background/80 backdrop-blur-md">
+            {/* Header with ONLY Plus button for New Chat */}
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-border/50 bg-background/80 backdrop-blur-md">
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold tracking-tight text-foreground">All Chats</h2>
                 <span className="px-2 py-0.5 rounded-full bg-secondary text-[11px] font-semibold text-muted-foreground">
@@ -88,28 +88,17 @@ export function ChatSidebarDrawer({
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onCreateNewChat();
-                    onClose();
-                  }}
-                  className="flex size-8 items-center justify-center rounded-full bg-secondary/80 hover:bg-secondary text-foreground active:scale-95 transition-all cursor-pointer"
-                  title="New Chat"
-                >
-                  <Plus className="size-4 stroke-[2.2]" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/80 active:scale-95 transition-all cursor-pointer"
-                  title="Close Sidebar"
-                >
-                  <X className="size-4 stroke-[2]" />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onCreateNewChat();
+                  onClose();
+                }}
+                className="flex size-8.5 items-center justify-center rounded-full bg-primary/10 hover:bg-primary/20 text-primary active:scale-95 transition-all cursor-pointer"
+                title="New Chat"
+              >
+                <Plus className="size-4.5 stroke-[2.2]" />
+              </button>
             </div>
 
             {/* Clean Start New Chat Banner (No ugly extra icons) */}

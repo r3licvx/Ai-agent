@@ -73,10 +73,16 @@ function MarkdownContent({
   };
 
   const elements = useMemo(() => {
-    // Strip raw HTML color tags if any model attempts to output them
+    // Strip raw HTML/XML pseudo tags if any model attempts to output them
     const cleanContent = content
       .replace(
-        /<\/?(?:red|green|yellow|blue|purple|orange|pink|cyan|emerald|amber|rose)[^>]*>/gi,
+        /<FollowUp\s+label=(?:"|')([^"']+)(?:"|')\s+query=(?:"|')([^"']+)(?:"|')\s*\/?>/gi,
+        (_, label: string) => `\n\n${label}`,
+      )
+      .replace(/<FollowUp[^>]*\/?>/gi, "")
+      .replace(/<FollowUp[^>]*>[\s\S]*?<\/FollowUp>/gi, "")
+      .replace(
+        /<\/?(?:red|green|yellow|blue|purple|orange|pink|cyan|emerald|amber|rose|FollowUp|query|label|custom|style|tag|color)[^>]*>/gi,
         "",
       )
       .replace(/\[\/?(?:red|green|yellow|blue|purple|orange|pink|cyan|emerald|amber|rose)\]/gi, "")

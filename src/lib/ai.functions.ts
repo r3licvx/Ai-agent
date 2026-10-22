@@ -57,16 +57,22 @@ export const sendChatMessage = createServerFn({ method: "POST" })
 
     let groundedTMDBItems: TMDBMediaItem[] = [];
 
-    const isIndianQuery =
-      /(?:hindi\s*movie|indian\s*movie|bollywood|tollywood|kollywood|south\s*movie|हिंदी\s*मूवी|भारतीय\s*फिल्म|बॉलीवुड|देसी|इंडिया\s*की\s*मूवी)/i.test(
+    const queriedTitle = extractQueriedMediaFromUserPrompt(userPrompt);
+
+    const isExplicitGenericIndian =
+      !queriedTitle &&
+      (/(?:hindi\s*movie|indian\s*movie|bollywood|tollywood|kollywood|south\s*movie|हिंदी\s*मूवी|भारतीय\s*फिल्म|बॉलीवुड|देसी|इंडिया\s*की\s*मूवी)/i.test(
         userPrompt,
       ) ||
-      (/(?:india|indian|इंडिया|भारत|बॉलीवुड)/i.test(userPrompt) &&
-        /(?:best|top|सजेशन|बताओ|मूवी|फिल्म)/i.test(userPrompt)) ||
-      (/(?:इंडिया\s*के\s*लिए|हिंदी\s*में)/i.test(userPrompt) &&
-        /(?:best|top|बताओ|सजेशन|मूवी|फिल्म)/i.test(userPrompt));
+        (/(?:india|indian|इंडिया|भारत|बॉलीवुड)/i.test(userPrompt) &&
+          /(?:best|top|सजेशन|बताओ|मूवी|फिल्म)/i.test(userPrompt)) ||
+        (/(?:इंडिया\s*के\s*लिए|हिंदी\s*में)/i.test(userPrompt) &&
+          /(?:best|top|बताओ|सजेशन|मूवी|फिल्म)/i.test(userPrompt)));
+
+    const isIndianQuery = isExplicitGenericIndian;
 
     const isTrendingQuery =
+      !queriedTitle &&
       !isIndianQuery &&
       /(?:trending|ट्रेन्डिंग|ट्रेंडिंग|popular|top\s*movies|top\s*5\s*movies|top\s*10\s*movies|best\s*movies|नई\s*फिल्में|हालिया\s*फिल्में|आज\s*की\s*ट्रेंडिंग|trending\s*movies|trending\s*series|what\s*to\s*watch|आज\s*की\s*मूवी|पांच\s*मूवी|टॉप\s*मूवी)/i.test(
         userPrompt,
@@ -74,7 +80,16 @@ export const sendChatMessage = createServerFn({ method: "POST" })
 
     // ONLY ground TMDB if user inquiry has positive entertainment intent!
     if (hasEntertainmentIntent) {
-      if (isIndianQuery) {
+      if (queriedTitle && queriedTitle.query) {
+        try {
+          const best = await findBestTMDBMatch(queriedTitle.query, undefined, queriedTitle.isAnime);
+          if (best) {
+            groundedTMDBItems.push(best);
+          }
+        } catch (err) {
+          console.warn("Failed fetching matched title for AI grounding:", err);
+        }
+      } else if (isIndianQuery) {
         try {
           const fetched = await fetchTMDBIndianTopMovies();
           if (fetched) groundedTMDBItems = fetched;
@@ -89,37 +104,21 @@ export const sendChatMessage = createServerFn({ method: "POST" })
           console.warn("Failed fetching trending TMDB for AI grounding:", err);
         }
       } else {
-        const queriedTitle = extractQueriedMediaFromUserPrompt(userPrompt);
-        if (queriedTitle && queriedTitle.query) {
+        // Dynamic search for specific genre or requirement (e.g. "Action movies", "Horror", "Comedy", "Anime")
+        const cleanSearch = userPrompt
+          .replace(
+            /(?:batao|bataiye|suggest|recommend|best|top|kuch|achhi|achha|movie|movies|film|films|series)/gi,
+            "",
+          )
+          .trim();
+        if (cleanSearch.length >= 2) {
           try {
-            const best = await findBestTMDBMatch(
-              queriedTitle.query,
-              undefined,
-              queriedTitle.isAnime,
-            );
-            if (best) {
-              groundedTMDBItems.push(best);
+            const live = await searchTMDBMedia(cleanSearch, false);
+            if (live.length > 0) {
+              groundedTMDBItems = live.slice(0, 6);
             }
-          } catch (err) {
-            console.warn("Failed fetching matched title for AI grounding:", err);
-          }
-        } else {
-          // Dynamic search for specific genre or requirement (e.g. "Action movies", "Horror", "Comedy", "Anime")
-          const cleanSearch = userPrompt
-            .replace(
-              /(?:batao|bataiye|suggest|recommend|best|top|kuch|achhi|achha|movie|movies|film|films|series)/gi,
-              "",
-            )
-            .trim();
-          if (cleanSearch.length >= 2) {
-            try {
-              const live = await searchTMDBMedia(cleanSearch, false);
-              if (live.length > 0) {
-                groundedTMDBItems = live.slice(0, 6);
-              }
-            } catch {
-              // ignore
-            }
+          } catch {
+            // ignore
           }
         }
       }
@@ -296,15 +295,7 @@ ${groundedTMDBItems.some((i) => i.trailerUrl) ? "* **Official Trailer:** [Includ
     const finalTMDBItems: TMDBMediaItem[] = [];
     const seenIds = new Set<number>();
 
-    // 1. Always include all grounded TMDB results fetched for this query
-    for (const item of groundedResults) {
-      if (!seenIds.has(item.id)) {
-        seenIds.add(item.id);
-        finalTMDBItems.push(item);
-      }
-    }
-
-    // 2. Direct user query match (e.g., "Dhurandhar", "Love Insurance Kompany", "Stranger Things")
+    // 1. Direct user title query match (e.g. "Dhurandhar", "Love Insurance Kompany", "Inception")
     if (userMediaSearch && userMediaSearch.query) {
       try {
         const directMatch = await findBestTMDBMatch(
@@ -314,81 +305,71 @@ ${groundedTMDBItems.some((i) => i.trailerUrl) ? "* **Official Trailer:** [Includ
         );
         if (directMatch && !seenIds.has(directMatch.id)) {
           seenIds.add(directMatch.id);
-          finalTMDBItems.unshift(directMatch);
+          finalTMDBItems.push(directMatch);
         }
       } catch (err) {
         console.warn("Failed fetching direct user TMDB match:", err);
       }
-    }
-
-    // 3. Fallback: Search TMDB for titles extracted from AI response text
-    if (finalTMDBItems.length < 6 && extractedQueries.length > 0) {
-      for (const q of extractedQueries) {
-        if (finalTMDBItems.length >= 8) break;
-        try {
-          const match = await findBestTMDBMatch(q.query, q.year, q.isAnime);
-          if (match && !seenIds.has(match.id)) {
-            seenIds.add(match.id);
-            finalTMDBItems.push(match);
-          }
-        } catch {
-          // ignore
+      // When a specific title was searched by the user, DO NOT add random extracted titles or generic lists!
+    } else {
+      // 2. Add grounded results if relevant (when no specific single title was asked)
+      for (const item of groundedResults) {
+        if (!seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          finalTMDBItems.push(item);
         }
       }
-    }
 
-    // 4. Ultimate Fallback: Direct TMDB search using cleaned user query if no items attached yet
-    if (
-      finalTMDBItems.length === 0 &&
-      (hasEntertainmentIntent ||
-        HAS_MEDIA_KEYWORDS_REGEX.test(userPrompt) ||
-        /poster|posters|photo|photos|picture|image|movie|movies|film|series|dhurandhar/i.test(
+      // 3. Search TMDB for recommended titles extracted from AI response text
+      if (finalTMDBItems.length < 6 && extractedQueries.length > 0) {
+        for (const q of extractedQueries) {
+          if (finalTMDBItems.length >= 8) break;
+          try {
+            const match = await findBestTMDBMatch(q.query, q.year, q.isAnime);
+            if (match && !seenIds.has(match.id)) {
+              seenIds.add(match.id);
+              finalTMDBItems.push(match);
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      // 4. ONLY if no specific title was requested AND user explicitly asked for generic recommendations ("best movies", "top trending shows"):
+      const isExplicitGenericList =
+        /^(?:top|best|trending|popular|new)\s*(?:movies?|films?|series|shows?|bollywood|hollywood|indian)/i.test(
+          userPrompt.trim(),
+        ) ||
+        /(?:sabse|kuch)\s*(?:acchi|best|top)\s*(?:movie|film|series|movies|films)\s*(?:batao|suggest|recommend)/i.test(
           userPrompt,
-        ))
-    ) {
-      if (isIndianQuery) {
-        try {
-          const indian = await fetchTMDBIndianTopMovies();
-          for (const item of indian.slice(0, 6)) {
-            if (!seenIds.has(item.id)) {
-              seenIds.add(item.id);
-              finalTMDBItems.push(item);
-            }
-          }
-        } catch {
-          // ignore
-        }
-      } else if (isTrendingQuery) {
-        try {
-          const trending = await fetchTMDBTrending("all", "day");
-          for (const item of trending.slice(0, 6)) {
-            if (!seenIds.has(item.id)) {
-              seenIds.add(item.id);
-              finalTMDBItems.push(item);
-            }
-          }
-        } catch {
-          // ignore
-        }
-      } else {
-        const cleanSearchQuery = userPrompt
-          .replace(
-            /(?:batao|bataiye|suggest|recommend|best|top|kuch|achhi|achha|movie|movies|film|films|series|poster|posters|photo|photos|image|picture|pic|dikhaye|dikhao|dikhana|dikha|show|me|please|ke|ki|ka|bare|baare|mein|me)/gi,
-            "",
-          )
-          .trim();
+        );
 
-        const searchTarget = cleanSearchQuery.length >= 2 ? cleanSearchQuery : userPrompt;
-        try {
-          const live = await searchTMDBMedia(searchTarget, false);
-          for (const item of live.slice(0, 6)) {
-            if (!seenIds.has(item.id)) {
-              seenIds.add(item.id);
-              finalTMDBItems.push(item);
+      if (finalTMDBItems.length === 0 && isExplicitGenericList) {
+        if (isIndianQuery) {
+          try {
+            const indian = await fetchTMDBIndianTopMovies();
+            for (const item of indian.slice(0, 6)) {
+              if (!seenIds.has(item.id)) {
+                seenIds.add(item.id);
+                finalTMDBItems.push(item);
+              }
             }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
+        } else if (isTrendingQuery) {
+          try {
+            const trending = await fetchTMDBTrending("all", "day");
+            for (const item of trending.slice(0, 6)) {
+              if (!seenIds.has(item.id)) {
+                seenIds.add(item.id);
+                finalTMDBItems.push(item);
+              }
+            }
+          } catch {
+            // ignore
+          }
         }
       }
     }

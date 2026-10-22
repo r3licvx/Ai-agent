@@ -64,6 +64,9 @@ const KNOWN_ANIME_KEYWORDS = [
 
 // Hindi / Devanagari common movie and series title translations for TMDB indexing
 const HINDI_TITLE_MAP: Record<string, string> = {
+  धुरंधर: "Dhurandhar",
+  धुरंदर: "Dhurandhar",
+  "धुरंधर मूवी": "Dhurandhar",
   "लव इंश्योरेंस कंपनी": "Love Insurance Kompany",
   "लव इंश्योरेंस": "Love Insurance Kompany",
   "लव इन्शुरन्स कंपनी": "Love Insurance Kompany",
@@ -545,10 +548,38 @@ export async function findBestTMDBMatch(
   const items = await searchTMDBMedia(title, forceAnime, year);
   if (items.length === 0) return null;
 
-  let best: TMDBMediaItem = items[0];
-  if (year) {
-    const matchYear = items.find((i) => i.year === year);
-    if (matchYear) best = matchYear;
+  const titleLower = title.trim().toLowerCase();
+
+  // Find exact or high relevance title match
+  let best = items.find((item) => {
+    const itemTitle = item.title.toLowerCase();
+    const itemOrig = item.originalTitle?.toLowerCase() || "";
+    return (
+      itemTitle === titleLower ||
+      itemTitle.includes(titleLower) ||
+      titleLower.includes(itemTitle) ||
+      itemOrig === titleLower ||
+      itemOrig.includes(titleLower)
+    );
+  });
+
+  if (!best) {
+    if (year) {
+      best = items.find((i) => i.year === year);
+    }
+    if (!best) {
+      best = items[0];
+    }
+  }
+
+  // Strict relevance check: verify word overlap so we NEVER return an unrelated movie!
+  const bestTitle = best.title.toLowerCase();
+  const bestOrig = best.originalTitle?.toLowerCase() || "";
+  const queryWords = titleLower.split(/\s+/).filter((w) => w.length >= 2);
+
+  const hasOverlap = queryWords.some((w) => bestTitle.includes(w) || bestOrig.includes(w));
+  if (!hasOverlap && titleLower.length >= 3) {
+    return null; // Return null instead of wrong/unrelated movie!
   }
 
   if (!best.cast || best.cast.length === 0) {
@@ -568,49 +599,47 @@ export const STUDY_OR_ACADEMIC_REGEX =
 export const HAS_MEDIA_KEYWORDS_REGEX =
   /(?:movie|movies|film|films|cinema|series|web\s*series|season|episode|anime|manga|actor|actress|director|box\s*office|trailer|soundtrack|poster|posters|photo|photos|image|images|picture|pic|pics|dhurandhar|मूवी|फिल्में|फिल्म|सिनेमा|सीरीज|एपिसोड|एक्टर|डायरेक्टर|ट्रेलर|थिएटर|हॉलीवुड|बॉलीवुड|एनीमे|कास्ट|पोस्टर|फोटो|तस्वीर|चित्र)/i;
 
-// Clean user prompt to extract queried media title (e.g. "Stranger Things के बारे में बताओ" -> "Stranger Things")
+// Clean user prompt to extract queried media title (e.g. "Dhurandhar movie kaisi hai" -> "Dhurandhar")
 export function extractQueriedMediaFromUserPrompt(userPrompt: string): MediaSearchQuery | null {
   if (!userPrompt) return null;
   const clean = userPrompt.trim();
 
-  // If user is studying, asking academic questions, or grammar without entertainment context, NEVER treat as media!
+  // If user is studying, asking academic questions without entertainment context, skip
   if (STUDY_OR_ACADEMIC_REGEX.test(clean) && !HAS_MEDIA_KEYWORDS_REGEX.test(clean)) {
     return null;
   }
 
-  // Strip common conversational Hindi/English question prefixes and suffixes
-  const candidate = clean
-    .replace(
-      /(?:tell me about|what is|how is|explain|review|details on|recommend|suggest|kaisa hai|kaisi hai|ke bare me batao|ke baare me batao|ke baare mein batao|ke baare me detail|ke bare me|kaisa show hai|kya hai)/gi,
-      "",
-    )
-    .replace(/[?।!.,]/g, "")
-    .trim();
-
-  // If candidate is a generic question or discovery inquiry, do NOT treat as a title!
-  const isGeneric =
-    /^(?:top\s*movies?|best\s*movies?|trending\s*movies?|new\s*movies?|movies?\s*list|what\s*to\s*watch|टॉप\s*मूवी|टॉप\s*फिल्में|बेस्ट\s*मूवी|बेस्ट\s*फिल्में|मूवी\s*बताओ|फिल्में\s*बताओ|इंडिया\s*के\s*लिए|इंडिया\s*की\s*मूवी|बॉलीवुड\s*की\s*मूवी|हिंदी\s*मूवी|ट्रेन्डिंग|ट्रेंडिंग|आज\s*की\s*मूवी|पांच\s*मूवी|5\s*मूवी|10\s*मूवी|top\s*5|top\s*10|इंडिया\s*के\s*लिए\s*बेस्ट|बेस्ट\s*बताओ|टॉप\s*बताओ|best\s*बताओ|action\s*movies?|comedy\s*movies?|horror\s*movies?|study\s*tips?|physics|math|grammar)$/i.test(
-      candidate,
-    );
-  if (isGeneric) {
-    return null;
-  }
-
-  // If candidate is a known title or transliterated
+  // Check dictionary first for Hindi or known transliterated titles
   for (const [hindi, english] of Object.entries(HINDI_TITLE_MAP)) {
-    if (candidate.toLowerCase().includes(hindi)) {
+    if (clean.toLowerCase().includes(hindi.toLowerCase())) {
       const isAnime = KNOWN_ANIME_KEYWORDS.some((k) => english.toLowerCase().includes(k));
       return { query: english, isAnime };
     }
   }
 
-  // Only consider candidate if it has explicit media context or known keywords
-  const hasEntertainmentContext =
-    HAS_MEDIA_KEYWORDS_REGEX.test(clean) ||
-    /(?:show|series|season|kab aayega|kab aayegi|kaisa hai|kaisi hai|trailer)/i.test(clean) ||
-    KNOWN_ANIME_KEYWORDS.some((k) => candidate.toLowerCase().includes(k));
+  // Strip conversational inquiry phrases and stop words to extract the underlying title
+  const candidate = clean
+    .replace(
+      /(?:tell me about|what is|how is|explain|review|details on|recommend|suggest|kaisa hai|kaisi hai|kaise hain|kaisa show hai|kaisi movie hai|kisi movie|kisi film|ke bare me batao|ke baare me batao|ke baare mein batao|ke baare me detail|ke bare me|kya hai|bhai|bro|batao|bataiye|dikhaye|dikhao|dikhana|dikha|show me|poster|posters|photo|photos|picture|image|pic|pics|movie|movies|film|films|series|show|shows|anime|manga|hd|4k|download|watch|online|review|rating|verdict|story|trailer)/gi,
+      " ",
+    )
+    .replace(
+      /\b(?:ka|ki|ke|ko|se|me|mein|par|hai|hain|hu|hoon|tha|thi|the|val|vala|vali|wale|wali|waali|bhi|aur|and|about|for)\b/gi,
+      " ",
+    )
+    .replace(/[?।!.,'"`:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  if (hasEntertainmentContext && candidate.length >= 2 && candidate.length <= 40) {
+  const isGeneric =
+    /^(?:top|best|trending|new|list|what to watch|poster|photo|image|picture|pic|movies|films|series|shows|hindi|bollywood|hollywood|india|indian|all)$/i.test(
+      candidate,
+    );
+  if (isGeneric || candidate.length < 2) {
+    return null;
+  }
+
+  if (candidate.length >= 2 && candidate.length <= 60) {
     const isAnime =
       /(?:anime|manga|एनीमे)/i.test(clean) ||
       KNOWN_ANIME_KEYWORDS.some((k) => candidate.toLowerCase().includes(k));
@@ -620,7 +649,7 @@ export function extractQueriedMediaFromUserPrompt(userPrompt: string): MediaSear
   return null;
 }
 
-// Extract recommended titles from AI output (Style A headings, tables, numbered lists, bullet lists, or bold titles)
+// Extract recommended titles from AI output (Style A headings, bold text **Title**, tables, numbered lists, bullet lists)
 export function extractMediaSearchQueries(text: string, userPrompt?: string): MediaSearchQuery[] {
   if (!text && !userPrompt) return [];
 
@@ -631,16 +660,18 @@ export function extractMediaSearchQueries(text: string, userPrompt?: string): Me
       text,
     ) ||
     (/(?:Movie|Film|Web Series|Anime Series|Anime Film)/i.test(text) &&
-      /(?:⭐|Trailer|Director|Cast|Actor|Showcase)/i.test(text));
+      /(?:⭐|Trailer|Director|Cast|Actor|Showcase|Poster|Review|Thriller|Action|Story|Director)/i.test(
+        text,
+      ));
 
-  // If this message has ZERO entertainment markers or is academic/study, NEVER extract random bold words as movies!
+  // If this message has ZERO entertainment markers or is academic/study, skip
   if (!hasUserMediaIntent && !hasResponseMediaMarkers) {
     return [];
   }
 
   const queries = new Map<string, { year?: string; isAnime: boolean }>();
 
-  // 1. If user asked about a specific title in their prompt (e.g. "Stranger Things", "12th Fail"), include it
+  // 1. If user asked about a specific title in their prompt (e.g. "Dhurandhar", "12th Fail"), include it
   if (userPrompt) {
     const directUserQuery = extractQueriedMediaFromUserPrompt(userPrompt);
     if (directUserQuery && directUserQuery.query) {
@@ -665,14 +696,20 @@ export function extractMediaSearchQueries(text: string, userPrompt?: string): Me
     }
 
     // Strip leading number dots, e.g. "1. Drishyam"
-    title = title.replace(/^\d+\.\s*/, "").trim();
+    title = title
+      .replace(/^\d+\.\s*/, "")
+      .replace(/^["'#*`]+|["'#*`]+$/g, "")
+      .trim();
 
     // Check against ignore words
     if (ignoreWords.test(title)) return;
 
     // Resolve Hindi titles via dictionary if present
     for (const [hindi, english] of Object.entries(HINDI_TITLE_MAP)) {
-      if (title.toLowerCase() === hindi || title.includes(hindi)) {
+      if (
+        title.toLowerCase() === hindi.toLowerCase() ||
+        title.toLowerCase().includes(hindi.toLowerCase())
+      ) {
         title = english;
         break;
       }
@@ -684,7 +721,7 @@ export function extractMediaSearchQueries(text: string, userPrompt?: string): Me
     }
   };
 
-  // 2. Style A Curated Showcase headings: "### 1. Title (Year)" or "### Title (Year)" or "### 1. Title"
+  // 2. Style A Curated Showcase headings: "### 1. Title (Year)" or "### Title"
   const styleARegex = /###\s*(?:\d+\.\s*)?([^\n(]+?)(?:\s*\(([0-9]{4})\))?(?:\n|$|\r)/g;
   let match: RegExpExecArray | null;
   while ((match = styleARegex.exec(text)) !== null) {
@@ -695,8 +732,18 @@ export function extractMediaSearchQueries(text: string, userPrompt?: string): Me
     }
   }
 
-  // 3. Numbered or Bullet list with bold title: ONLY if it has an explicit (YYYY) year OR contains movie indicator
-  const listBoldWithYearRegex = /(?:^|\n)\s*(?:\d+\.|\*|-)\s*\*\*([^*]+?)\*\*\s*\(([0-9]{4})\)/gu;
+  // 3. Extract bold title strings e.g. **Dhurandhar** or **3 Idiots**
+  const boldTitleRegex = /\*\*([^*]+)\*\*/g;
+  while ((match = boldTitleRegex.exec(text)) !== null) {
+    const rawTitle = match[1]?.trim();
+    if (rawTitle && rawTitle.length >= 2 && rawTitle.length <= 40 && !ignoreWords.test(rawTitle)) {
+      addCandidate(rawTitle);
+    }
+  }
+
+  // 4. Numbered or Bullet list with bold title: "1. **Title** (YYYY)"
+  const listBoldWithYearRegex =
+    /(?:^|\n)\s*(?:\d+\.|\*|-)\s*\*\*([^*]+?)\*\*\s*(?:\(([0-9]{4})\))?/gu;
   while ((match = listBoldWithYearRegex.exec(text)) !== null) {
     const rawTitle = match[1]?.trim();
     const year = match[2];
@@ -705,7 +752,7 @@ export function extractMediaSearchQueries(text: string, userPrompt?: string): Me
     }
   }
 
-  // 4. Comparison Table rows: "| **Title** | ... |"
+  // 5. Comparison Table rows: "| **Title** | ... |"
   if (hasResponseMediaMarkers) {
     const tableRegex = /\|\s*\*\*([^*]+?)\*\*\s*\|/gu;
     while ((match = tableRegex.exec(text)) !== null) {

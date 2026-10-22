@@ -588,7 +588,7 @@ function MarkdownContent({
           parsedElements.push(
             <h3
               key={`h3-${i}`}
-              className="font-extrabold text-[16.5px] sm:text-[17.5px] mt-4 mb-2 text-foreground tracking-tight leading-snug"
+              className="font-extrabold text-[18px] sm:text-[20px] mt-4 mb-2 text-foreground tracking-tight leading-snug"
             >
               {renderInline(cleanHeader)}
             </h3>,
@@ -597,7 +597,7 @@ function MarkdownContent({
           parsedElements.push(
             <h2
               key={`h2-${i}`}
-              className="font-black text-[18px] sm:text-[20px] mt-5 mb-2.5 pb-1 border-b border-border/50 text-foreground tracking-tight leading-snug"
+              className="font-black text-[21px] sm:text-[23px] mt-5 mb-2.5 pb-1 border-b border-border/50 text-foreground tracking-tight leading-snug"
             >
               {renderInline(cleanHeader)}
             </h2>,
@@ -610,9 +610,9 @@ function MarkdownContent({
       if (/^(\s*[-*•])\s+/.test(line)) {
         const text = line.replace(/^(\s*[-*•])\s+/, "");
         parsedElements.push(
-          <div key={`bullet-${i}`} className="flex items-start gap-2.5 my-1.5 pl-0.5">
-            <span className="mt-2.5 size-1.5 rounded-full bg-primary shrink-0 shadow-2xs" />
-            <div className="flex-1 leading-[1.7] text-slate-950 dark:text-zinc-50 font-normal text-[15px] sm:text-[15.5px]">
+          <div key={`bullet-${i}`} className="flex items-start gap-3 my-2 pl-0.5">
+            <span className="mt-2.5 size-2 rounded-full bg-primary shrink-0 shadow-2xs" />
+            <div className="flex-1 leading-[1.75] text-slate-950 dark:text-zinc-50 font-normal text-[16px] sm:text-[17px]">
               {renderInline(text)}
             </div>
           </div>,
@@ -625,11 +625,11 @@ function MarkdownContent({
         const matchNum = line.match(/^\s*(\d+)\.\s+(.*)/);
         if (matchNum) {
           parsedElements.push(
-            <div key={`num-${i}`} className="flex items-start gap-2.5 my-1.5 pl-0.5">
-              <span className="font-bold text-primary shrink-0 text-[14.5px] mt-0.5">
+            <div key={`num-${i}`} className="flex items-start gap-3 my-2 pl-0.5">
+              <span className="font-bold text-primary shrink-0 text-[16px] mt-0.5">
                 {matchNum[1]}.
               </span>
-              <div className="flex-1 leading-[1.7] text-slate-950 dark:text-zinc-50 font-normal text-[15px] sm:text-[15.5px]">
+              <div className="flex-1 leading-[1.75] text-slate-950 dark:text-zinc-50 font-normal text-[16px] sm:text-[17px]">
                 {renderInline(matchNum[2] || "")}
               </div>
             </div>,
@@ -647,7 +647,7 @@ function MarkdownContent({
       parsedElements.push(
         <div
           key={`para-${i}`}
-          className="leading-[1.7] text-slate-950 dark:text-zinc-50 font-normal text-[15px] sm:text-[15.5px] my-1"
+          className="leading-[1.75] text-slate-950 dark:text-zinc-50 font-normal text-[16px] sm:text-[17px] my-1.5"
         >
           {renderInline(line)}
         </div>,
@@ -663,11 +663,13 @@ function MarkdownContent({
 export function MessageBubble({
   message,
   previousMessage,
+  nextMessage,
   onEdit,
   onRegenerate,
 }: {
   message: ChatMessage;
   previousMessage?: ChatMessage;
+  nextMessage?: ChatMessage;
   onEdit?: (m: ChatMessage) => void;
   onRegenerate?: (messageId: string) => void;
 }) {
@@ -814,8 +816,8 @@ export function MessageBubble({
     >
       {mine ? (
         /* Clean User Message */
-        <div className="flex flex-col items-end max-w-[85%] sm:max-w-[75%] group/user">
-          <div className="rounded-[22px] bg-[#f0f4f9] dark:bg-[#282a2c] text-slate-900 dark:text-zinc-100 px-5 py-3 text-[15px] sm:text-[16px] font-normal leading-[1.6] break-words shadow-xs select-text">
+        <div className="flex flex-col items-end max-w-[88%] sm:max-w-[78%] group/user">
+          <div className="rounded-[24px] bg-[#f0f4f9] dark:bg-[#282a2c] text-slate-900 dark:text-zinc-100 px-5 sm:px-6 py-3.5 sm:py-4 text-[16px] sm:text-[17px] font-normal leading-[1.65] break-words shadow-xs select-text">
             <MarkdownContent
               content={message.content}
               videoMap={videoMap}
@@ -823,30 +825,26 @@ export function MessageBubble({
             />
           </div>
 
-          {/* User Action Row: Copy and Edit Pencil button */}
+          {/* User Action Row: ONLY Edit Pencil and Copy Icon (no regenerate button here) */}
           <div className="flex items-center gap-1.5 mt-1.5 pr-2 opacity-80 group-hover/user:opacity-100 transition-opacity">
             {onEdit && (
               <button
                 type="button"
                 onClick={() => onEdit(message)}
-                className="flex items-center justify-center size-7 rounded-full hover:bg-secondary active:scale-90 transition-all cursor-pointer text-muted-foreground hover:text-foreground"
+                className="flex items-center justify-center size-8 rounded-full hover:bg-secondary active:scale-90 transition-all cursor-pointer text-muted-foreground hover:text-foreground"
                 title="Edit message"
               >
-                <Pencil className="size-3.5" />
+                <Pencil className="size-4" />
               </button>
             )}
 
             <button
               type="button"
               onClick={handleCopyMessage}
-              className="flex items-center justify-center size-7 rounded-full hover:bg-secondary active:scale-90 transition-all cursor-pointer text-muted-foreground hover:text-foreground"
+              className="flex items-center justify-center size-8 rounded-full hover:bg-secondary active:scale-90 transition-all cursor-pointer text-muted-foreground hover:text-foreground"
               title="Copy prompt"
             >
-              {copied ? (
-                <Check className="size-3.5 text-emerald-500" />
-              ) : (
-                <Copy className="size-3.5" />
-              )}
+              {copied ? <Check className="size-4 text-emerald-500" /> : <Copy className="size-4" />}
             </button>
           </div>
 
@@ -874,32 +872,32 @@ export function MessageBubble({
         /* Gemini Style AI Response: Native Canvas with AI Logo Header */
         <div className="w-full max-w-3xl select-text pt-1">
           {/* AI Header with Static Logo (Aarambh AI with clean 2-color gradient) */}
-          <div className="flex items-center gap-2 mb-2 select-none">
+          <div className="flex items-center gap-2.5 mb-2.5 select-none">
             <img
               src={LEOMA_IDENTITY.avatar}
               alt={LEOMA_IDENTITY.name}
-              className="size-6 rounded-full object-cover border border-primary/20 shadow-xs"
+              className="size-7 rounded-full object-cover border border-primary/20 shadow-xs"
             />
-            <span className="text-[13.5px] font-bold tracking-tight text-foreground">
+            <span className="text-[15px] sm:text-[16.5px] font-bold tracking-tight text-foreground">
               {LEOMA_IDENTITY.name}
             </span>
           </div>
 
-          {/* TMDB Movie & Anime Posters positioned at the top, outside pl-8 indentation for full width presence */}
-          {!message.isStreaming && tmdbItems.length > 0 && (
-            <div className="w-full my-1.5 sm:my-2">
-              <TMDBMediaCards items={tmdbItems} />
-            </div>
-          )}
+          <div className="text-slate-950 dark:text-zinc-50 text-[16px] sm:text-[17px] leading-[1.75] break-words max-w-full overflow-hidden min-w-0 pl-9">
+            {message.content.trim() ? (
+              <MarkdownContent
+                content={message.content}
+                videoMap={videoMap}
+                channelMap={channelMap}
+              />
+            ) : message.isAborted ? (
+              <p className="text-muted-foreground italic text-sm py-1">
+                Generation stopped before completion.
+              </p>
+            ) : null}
 
-          <div className="text-slate-950 dark:text-zinc-50 text-[15px] sm:text-[15.5px] leading-[1.7] break-words max-w-full overflow-hidden min-w-0 pl-8">
-            <MarkdownContent
-              content={message.content}
-              videoMap={videoMap}
-              channelMap={channelMap}
-            />
             {message.isStreaming && (
-              <span className="inline-block size-2 ml-1 rounded-full bg-primary animate-pulse align-middle" />
+              <span className="inline-block size-2.5 ml-1.5 rounded-full bg-primary animate-pulse align-middle" />
             )}
 
             {/* YouTube Video Details Preview Cards at the bottom */}
@@ -922,43 +920,54 @@ export function MessageBubble({
                 })}
               </div>
             )}
+          </div>
 
-            {/* Action Row: Copy button & Regenerate button */}
-            <div className="flex items-center gap-2.5 mt-4 text-muted-foreground flex-wrap">
-              <button
-                type="button"
-                onClick={handleCopyMessage}
-                className="flex items-center justify-center size-8 rounded-full hover:bg-secondary active:scale-90 transition-all cursor-pointer text-muted-foreground hover:text-foreground"
-                title="Copy response"
-              >
-                {copied ? (
-                  <Check className="size-4 text-emerald-500" />
-                ) : (
-                  <Copy className="size-4" />
-                )}
-              </button>
+          {/* TMDB Movie & Anime Posters: Positioned outside pl-9 to utilize full screen width for horizontal scrolling */}
+          {!message.isStreaming && tmdbItems.length > 0 && (
+            <div className="w-full mt-3.5 mb-2">
+              <TMDBMediaCards items={tmdbItems} />
+            </div>
+          )}
+
+          <div className="pl-9">
+            {/* Action Row: Copy button & Regenerate button (Exact clean design on AI side) */}
+            <div className="flex items-center gap-3 mt-4 text-muted-foreground flex-wrap">
+              {message.content.trim() && (
+                <button
+                  type="button"
+                  onClick={handleCopyMessage}
+                  className="flex items-center justify-center size-9 rounded-full hover:bg-secondary active:scale-90 transition-all cursor-pointer text-muted-foreground hover:text-foreground"
+                  title="Copy response"
+                >
+                  {copied ? (
+                    <Check className="size-4.5 text-emerald-500" />
+                  ) : (
+                    <Copy className="size-4.5" />
+                  )}
+                </button>
+              )}
 
               {onRegenerate && !message.isStreaming && (
                 <button
                   type="button"
                   onClick={() => onRegenerate(message.id)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full hover:bg-secondary active:scale-95 transition-all cursor-pointer text-muted-foreground hover:text-foreground text-xs font-semibold"
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full hover:bg-secondary active:scale-95 transition-all cursor-pointer text-muted-foreground hover:text-foreground text-sm font-semibold"
                   title="Regenerate this response"
                 >
-                  <RotateCcw className="size-3.5" />
+                  <RotateCcw className="size-4" />
                   <span>Regenerate</span>
                 </button>
               )}
 
               {message.isAborted && (
-                <span className="text-[11px] font-medium text-amber-500/90 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full select-none">
+                <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full select-none">
                   Generation stopped
                 </span>
               )}
             </div>
 
             {/* Disclaimer */}
-            <p className="text-[12px] font-medium text-muted-foreground/80 mt-1.5 select-none">
+            <p className="text-[13px] font-medium text-muted-foreground/80 mt-2 select-none">
               {LEOMA_IDENTITY.name} can make mistakes.
             </p>
           </div>

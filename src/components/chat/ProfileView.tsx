@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { LogOut, ArrowLeft, Check, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { AGENT_MODELS, LEOMA_IDENTITY } from "@/lib/constants";
+import { validateDisplayNameWithAI } from "@/lib/ai.functions";
 
 export function ProfileView({
   onBack,
@@ -14,20 +15,32 @@ export function ProfileView({
   const { profile, updateProfile, signOut } = useAuth();
 
   const [displayName, setDisplayName] = useState("");
-  const [selectedModel, setSelectedModel] = useState("gemini-4-argon");
+  const [selectedModel, setSelectedModel] = useState("gemini-3.8-flash");
   const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
     if (profile) {
       setDisplayName(profile.display_name || "");
-      setSelectedModel(profile.selected_model || "gemini-4-argon");
+      const validModel = AGENT_MODELS.some((m) => m.id === profile.selected_model)
+        ? (profile.selected_model as string)
+        : "gemini-3.8-flash";
+      setSelectedModel(validModel);
     }
   }, [profile]);
 
   const handleNameBlur = async () => {
-    const cleanName = displayName.trim() || "Bro";
-    if (cleanName === profile?.display_name) return;
+    const rawName = displayName.trim();
+    if (!rawName || rawName === profile?.display_name) return;
+
     try {
+      const res = await validateDisplayNameWithAI({ data: { name: rawName } });
+      if (!res.isValid) {
+        toast.error(res.reason || "Please enter a valid real name");
+        setDisplayName(profile?.display_name || "");
+        return;
+      }
+      const cleanName = res.cleanName || rawName;
+      setDisplayName(cleanName);
       await updateProfile({
         display_name: cleanName,
         selected_model: selectedModel,

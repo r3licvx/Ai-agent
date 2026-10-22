@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             first_name: "Bro",
             last_name: null,
             avatar_url: null,
-            selected_model: "gemini-4-argon",
+            selected_model: "gemini-3.8-flash",
             custom_instructions: DEFAULT_SYSTEM_PROMPT,
           };
           setProfile(defaultProfile);
@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       first_name: displayName,
       last_name: null,
       avatar_url: null,
-      selected_model: "gemini-4-argon",
+      selected_model: "gemini-3.8-flash",
       custom_instructions: DEFAULT_SYSTEM_PROMPT,
     };
 
@@ -109,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         last_name: partial.last_name !== undefined ? partial.last_name : prev?.last_name || null,
         avatar_url:
           partial.avatar_url !== undefined ? partial.avatar_url : prev?.avatar_url || null,
-        selected_model: partial.selected_model || prev?.selected_model || "gemini-4-argon",
+        selected_model: partial.selected_model || prev?.selected_model || "gemini-3.8-flash",
         custom_instructions:
           partial.custom_instructions !== undefined
             ? partial.custom_instructions
@@ -128,9 +128,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     if (typeof window !== "undefined") {
       try {
-        localStorage.removeItem(STORAGE_KEY_USER);
-        localStorage.removeItem(STORAGE_KEY_PROFILE);
-        localStorage.removeItem(STORAGE_KEY_MESSAGES);
         localStorage.clear();
       } catch (e) {
         console.warn("Error clearing local storage on signOut", e);

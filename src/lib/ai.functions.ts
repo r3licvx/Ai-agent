@@ -7,6 +7,7 @@ import {
   findBestTMDBMatch,
   searchTMDBMedia,
   extractQueriedMediaFromUserPrompt,
+  extractMediaSearchQueries,
   STUDY_OR_ACADEMIC_REGEX,
   HAS_MEDIA_KEYWORDS_REGEX,
   type TMDBMediaItem,
@@ -195,166 +196,222 @@ ${groundedTMDBItems.some((i) => i.trailerUrl) ? "* **Official Trailer:** [Includ
       { role: "user", content: userPrompt || "Yo" },
     ];
 
-    const controller = new AbortController();
-    // Allow up to 45 seconds for deep reasoning models
-    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    let replyContent = "";
+    const now = Date.now();
+    const groundedResults = groundedTMDBItems;
 
-    try {
-      const response = await fetch(CUSTOM_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${CUSTOM_API_KEY}`,
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: selectedModel,
-          messages,
-          tools: [{ googleSearch: {} }],
-          safety_settings: [
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" },
-          ],
-          safetySettings: [
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" },
-          ],
-        }),
-      });
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 40000);
 
-      clearTimeout(timeoutId);
+      try {
+        const response = await fetch(CUSTOM_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${CUSTOM_API_KEY}`,
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model: selectedModel,
+            messages,
+            tools: [{ googleSearch: {} }],
+          }),
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`AI Service Error (${response.status}): ${errorText.slice(0, 150)}`);
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => "");
+          throw new Error(`AI Service status ${response.status}: ${errorText.slice(0, 100)}`);
+        }
+
+        const json = (await response.json()) as {
+          choices?: { message?: { content?: string } }[];
+        };
+
+        replyContent = json.choices?.[0]?.message?.content?.trim() || "";
+        if (replyContent) {
+          break; // successfully got content
+        }
+      } catch (err) {
+        clearTimeout(timeoutId);
+        lastErr = err;
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        }
       }
-
-      const json = (await response.json()) as {
-        choices?: { message?: { content?: string } }[];
-      };
-
-      let replyContent = json.choices?.[0]?.message?.content?.trim() || "";
-
-      // Clean reasoning or thinking tags if present in output
-      replyContent = replyContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-
-      // Clean pseudo tags like <FollowUp label="..." query="..."/> and HTML color tags
-      replyContent = replyContent
-        .replace(
-          /<FollowUp\s+label=(?:"|')([^"']+)(?:"|')\s+query=(?:"|')([^"']+)(?:"|')\s*\/?>/gi,
-          (_, label: string) => `\n\n${label}`,
-        )
-        .replace(/<FollowUp[^>]*\/?>/gi, "")
-        .replace(/<FollowUp[^>]*>[\s\S]*?<\/FollowUp>/gi, "")
-        .replace(
-          /<\/?(?:red|green|yellow|blue|purple|orange|pink|cyan|emerald|amber|rose|FollowUp|query|label|custom|style|tag|color)[^>]*>/gi,
-          "",
-        )
-        .replace(
-          /\[\/?(?:red|green|yellow|blue|purple|orange|pink|cyan|emerald|amber|rose)\]/gi,
-          "",
-        );
-
-      // Sanitize any hallucinated googleusercontent links and normalize broken markdown links
-      replyContent = replyContent
-        .replace(/https?:\/\/googleusercontent\.com\/[^\s)]+/gi, "")
-        .replace(/\[([^\]]+)\]\s*\n\s*\((https?:\/\/[^\s)]+)\)/g, "[$1]($2)")
-        .trim();
-
-      // Intercept robot canned refusal responses and convert into in-character bro banter
-      const refusalRegex =
-        /i cannot fulfill|i am unable to|as an ai|i cannot assist|decline to answer|safety guidelines|inappropriate content|safety filters stepped in/i;
-      if (refusalRegex.test(replyContent)) {
-        const fallbacks = [
-          `Abe bsdk 💀 itna savage/dark mood mein hai? Safety filter ne thoda break le liya 😂! Rephrase karke pooch bro! 🤙🏻🔥`,
-          `Arre bc 💀 itna dark joke marega toh mere circuit aur safety filter dono jal jayenge! 😂 Bol aur kya scene hai! 🤙🏻`,
-          `Abe bsdk 💀 tu fir shuru ho gaya? 😂 Bol kya jaanna hai bhai, thoda doosri bhasha mein bol! 🔥`,
-          `Abe saale 💀 itna savage question kyu hai? Chal bata aur kis topic pe baat karni hai! 😂🤙🏻`,
-        ];
-        replyContent = fallbacks[Math.floor(Math.random() * fallbacks.length)];
-      }
-
-      if (!replyContent) {
-        replyContent = "Abe bol na, kya bolna chahta hai?";
-      }
-
-      const now = Date.now();
-
-      // Only attach grounded TMDB items that were ACTUALLY mentioned or recommended in replyContent!
-      const replyLower = replyContent.toLowerCase();
-      const verifiedMentionedTMDBItems = groundedTMDBItems.filter((item) => {
-        const titleLower = item.title.toLowerCase();
-        const origLower = item.originalTitle?.toLowerCase();
-        return replyLower.includes(titleLower) || (origLower && replyLower.includes(origLower));
-      });
-
-      const assistantReply = {
-        id: `reply-${now}`,
-        role: "assistant" as const,
-        content: replyContent,
-        created_at: new Date().toISOString(),
-        tmdbItems: verifiedMentionedTMDBItems.length > 0 ? verifiedMentionedTMDBItems : undefined,
-      };
-
-      const userRow = {
-        id: `user-${now}`,
-        role: "user" as const,
-        content: userPrompt,
-        created_at: new Date().toISOString(),
-      };
-
-      return {
-        replies: [assistantReply],
-        userMessage: userRow,
-      };
-    } catch (err) {
-      clearTimeout(timeoutId);
-      const now = Date.now();
-
-      const isTimeout =
-        err instanceof Error &&
-        (err.name === "AbortError" ||
-          err.message.includes("aborted") ||
-          err.message.includes("timeout"));
-      const isSafety =
-        err instanceof Error && /safety|filter|inappropriate|blocked/i.test(err.message);
-
-      let fallbackText = "";
-      if (isTimeout) {
-        fallbackText =
-          "Arey bhai! Server thoda busy chal raha hai / response lene mein time lag gaya 😂! Phirse ek baar try kar bro, main taiyar hoon!";
-      } else if (isSafety) {
-        fallbackText =
-          "Abe bsdk 💀 itna dark/sensitive pooch liya tune ki safety filter hil gaya 😂! Thoda ghuma ke doosri bhasha mein pooch bro!";
-      } else {
-        fallbackText =
-          "Arey bhai! Network ya server pe thoda lafda ho gaya re 😂 Phirse try kar, main yahin hoon!";
-      }
-
-      const fallbackReply = {
-        id: `reply-${now}`,
-        role: "assistant" as const,
-        content: fallbackText,
-        created_at: new Date().toISOString(),
-        tmdbItems: groundedTMDBItems.length > 0 ? groundedTMDBItems : undefined,
-      };
-
-      return {
-        replies: [fallbackReply],
-        userMessage: {
-          id: `user-${now}`,
-          role: "user" as const,
-          content: userPrompt,
-          created_at: new Date().toISOString(),
-        },
-      };
     }
+
+    if (!replyContent) {
+      if (lastErr) {
+        console.error("AI service completion failed after retries:", lastErr);
+        throw lastErr instanceof Error
+          ? lastErr
+          : new Error("AI service temporary connection error. Please tap Regenerate.");
+      }
+      replyContent = "Main aapki kya madad kar sakta hoon? Kripya apna sawal poochein.";
+    }
+
+    // Clean reasoning or thinking tags if present in output
+    replyContent = replyContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+
+    // Clean pseudo tags like <Image .../>, image_agent_tag_..., <FollowUp .../>, and HTML color tags
+    replyContent = replyContent
+      .replace(/<Image\b[^>]*>(?:[\s\S]*?<\/Image>)?/gi, "")
+      .replace(/<Image\b[^>]*\/>/gi, "")
+      .replace(/<image_agent_tag[^>]*>/gi, "")
+      .replace(/image_agent_tag_\d+/gi, "")
+      .replace(
+        /<FollowUp\s+label=(?:"|')([^"']+)(?:"|')\s+query=(?:"|')([^"']+)(?:"|')\s*\/?>/gi,
+        (_, label: string) => `\n\n${label}`,
+      )
+      .replace(/<FollowUp[^>]*\/?>/gi, "")
+      .replace(/<FollowUp[^>]*>[\s\S]*?<\/FollowUp>/gi, "")
+      .replace(
+        /<\/?(?:red|green|yellow|blue|purple|orange|pink|cyan|emerald|amber|rose|FollowUp|query|label|custom|style|tag|color)[^>]*>/gi,
+        "",
+      )
+      .replace(/\[\/?(?:red|green|yellow|blue|purple|orange|pink|cyan|emerald|amber|rose)\]/gi, "");
+
+    // Sanitize any hallucinated googleusercontent links and normalize broken markdown links
+    replyContent = replyContent
+      .replace(/https?:\/\/googleusercontent\.com\/[^\s)]+/gi, "")
+      .replace(/\[([^\]]+)\]\s*\n\s*\((https?:\/\/[^\s)]+)\)/g, "[$1]($2)")
+      .trim();
+
+    // Clean handling of safety refusals
+    const refusalRegex =
+      /i cannot fulfill|i am unable to|as an ai|i cannot assist|decline to answer|safety guidelines|inappropriate content|safety filters stepped in/i;
+    if (refusalRegex.test(replyContent)) {
+      replyContent =
+        "Main is vishay par directly jankari provide nahi kar sakta safety guidelines ke anusaar. Kripya kisi doosre sawal ya topic par charcha karein.";
+    }
+
+    // Extract media queries from both userPrompt and replyContent
+    const userMediaSearch = extractQueriedMediaFromUserPrompt(userPrompt);
+    const extractedQueries = extractMediaSearchQueries(replyContent, userPrompt);
+
+    const finalTMDBItems: TMDBMediaItem[] = [];
+    const seenIds = new Set<number>();
+
+    // 1. Always include all grounded TMDB results fetched for this query
+    for (const item of groundedResults) {
+      if (!seenIds.has(item.id)) {
+        seenIds.add(item.id);
+        finalTMDBItems.push(item);
+      }
+    }
+
+    // 2. Direct user query match (e.g., "Dhurandhar", "Love Insurance Kompany", "Stranger Things")
+    if (userMediaSearch && userMediaSearch.query) {
+      try {
+        const directMatch = await findBestTMDBMatch(
+          userMediaSearch.query,
+          userMediaSearch.year,
+          userMediaSearch.isAnime,
+        );
+        if (directMatch && !seenIds.has(directMatch.id)) {
+          seenIds.add(directMatch.id);
+          finalTMDBItems.unshift(directMatch);
+        }
+      } catch (err) {
+        console.warn("Failed fetching direct user TMDB match:", err);
+      }
+    }
+
+    // 3. Fallback: Search TMDB for titles extracted from AI response text
+    if (finalTMDBItems.length < 6 && extractedQueries.length > 0) {
+      for (const q of extractedQueries) {
+        if (finalTMDBItems.length >= 8) break;
+        try {
+          const match = await findBestTMDBMatch(q.query, q.year, q.isAnime);
+          if (match && !seenIds.has(match.id)) {
+            seenIds.add(match.id);
+            finalTMDBItems.push(match);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    // 4. Ultimate Fallback: Direct TMDB search using cleaned user query if no items attached yet
+    if (
+      finalTMDBItems.length === 0 &&
+      (hasEntertainmentIntent ||
+        HAS_MEDIA_KEYWORDS_REGEX.test(userPrompt) ||
+        /poster|posters|photo|photos|picture|image|movie|movies|film|series|dhurandhar/i.test(
+          userPrompt,
+        ))
+    ) {
+      if (isIndianQuery) {
+        try {
+          const indian = await fetchTMDBIndianTopMovies();
+          for (const item of indian.slice(0, 6)) {
+            if (!seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              finalTMDBItems.push(item);
+            }
+          }
+        } catch {
+          // ignore
+        }
+      } else if (isTrendingQuery) {
+        try {
+          const trending = await fetchTMDBTrending("all", "day");
+          for (const item of trending.slice(0, 6)) {
+            if (!seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              finalTMDBItems.push(item);
+            }
+          }
+        } catch {
+          // ignore
+        }
+      } else {
+        const cleanSearchQuery = userPrompt
+          .replace(
+            /(?:batao|bataiye|suggest|recommend|best|top|kuch|achhi|achha|movie|movies|film|films|series|poster|posters|photo|photos|image|picture|pic|dikhaye|dikhao|dikhana|dikha|show|me|please|ke|ki|ka|bare|baare|mein|me)/gi,
+            "",
+          )
+          .trim();
+
+        const searchTarget = cleanSearchQuery.length >= 2 ? cleanSearchQuery : userPrompt;
+        try {
+          const live = await searchTMDBMedia(searchTarget, false);
+          for (const item of live.slice(0, 6)) {
+            if (!seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              finalTMDBItems.push(item);
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    const assistantReply = {
+      id: `reply-${now}`,
+      role: "assistant" as const,
+      content: replyContent,
+      created_at: new Date().toISOString(),
+      tmdbItems: finalTMDBItems.length > 0 ? finalTMDBItems : undefined,
+    };
+
+    const userRow = {
+      id: `user-${now}`,
+      role: "user" as const,
+      content: userPrompt,
+      created_at: new Date().toISOString(),
+    };
+
+    return {
+      replies: [assistantReply],
+      userMessage: userRow,
+    };
   });
 
 const TitleInputSchema = z.object({
@@ -483,4 +540,164 @@ Rules:
       ];
       return { suggestions: fallbacks };
     }
+  });
+
+const NameValidationSchema = z.object({
+  name: z.string(),
+});
+
+export const validateDisplayNameWithAI = createServerFn({ method: "POST" })
+  .validator((input: unknown) => NameValidationSchema.parse(input))
+  .handler(async ({ data }) => {
+    const raw = data.name.trim();
+
+    // 1. Instant local validation checks
+    if (!raw || raw.length < 2) {
+      return {
+        isValid: false,
+        reason: "Please enter a valid real name with at least 2 characters.",
+      };
+    }
+
+    if (raw.length > 30) {
+      return {
+        isValid: false,
+        reason: "Name is too long. Please enter a concise name under 30 characters.",
+      };
+    }
+
+    // Reject symbols, punctuation, or slashes
+    if (/[,/\\@#$%*+=<>?!_{}[\]~^;:|"`]/.test(raw)) {
+      return {
+        isValid: false,
+        reason: "Symbols, slashes, or punctuation are not allowed. Please enter a real name.",
+      };
+    }
+
+    // Reject pure numbers
+    if (/^\d+$/.test(raw)) {
+      return {
+        isValid: false,
+        reason: "Numbers are not allowed as a name. Please enter your real name.",
+      };
+    }
+
+    const lower = raw.toLowerCase();
+    const junkWords = new Set([
+      "hello",
+      "hi",
+      "hey",
+      "hy",
+      "hlo",
+      "hlw",
+      "bro",
+      "bhai",
+      "test",
+      "admin",
+      "user",
+      "null",
+      "undefined",
+      "asdf",
+      "qwerty",
+      "haha",
+      "lol",
+      "rofl",
+      "no",
+      "yes",
+      "ok",
+      "okay",
+      "namaste",
+      "welcome",
+      "guest",
+      "none",
+      "anon",
+      "anonymous",
+      "123",
+      "fake",
+      "someone",
+      "nobody",
+      "xyz",
+      "abc",
+      "temp",
+      "dot",
+      "comma",
+      "space",
+      "slash",
+      "login",
+      "sign",
+      "signup",
+      "pass",
+      "password",
+      "name",
+      "yourname",
+      "enter",
+      "kuchbhi",
+      "kuch",
+      "ghanta",
+      "system",
+      "bot",
+      "ai",
+      "aarambh",
+      "gemini",
+    ]);
+
+    if (junkWords.has(lower) || lower.split(/\s+/).some((w) => junkWords.has(w))) {
+      return {
+        isValid: false,
+        reason: `"${raw}" is casual chatter, not a real name. Please enter a proper name (e.g. Alex, Rahul, Sameer).`,
+      };
+    }
+
+    // 2. AI validation check for subtle keyboard mash or non-names
+    try {
+      const response = await fetch(CUSTOM_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${CUSTOM_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gemini-3.8-flash",
+          messages: [
+            {
+              role: "system",
+              content:
+                'You are a strict real name validator. Evaluate if the input string is a valid human first/last/full name or nickname. Reject keyboard mash (e.g., asdfgh, hshshs, dfghjk), random chatter (e.g. "kya haal", "nothing", "anything", "no name"), offensive gibberish, or nonsense words. Output ONLY JSON: {"isValid": true/false, "reason": "Short clear English message if invalid"}.',
+            },
+            {
+              role: "user",
+              content: `Input name to validate: "${raw}"`,
+            },
+          ],
+        }),
+      });
+
+      if (response.ok) {
+        const json = (await response.json()) as {
+          choices?: { message?: { content?: string } }[];
+        };
+        const content = json.choices?.[0]?.message?.content?.trim() || "";
+        const match = content.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0]) as { isValid?: boolean; reason?: string };
+          if (parsed.isValid === false) {
+            return {
+              isValid: false,
+              reason:
+                parsed.reason || "Invalid name detected. Please enter a legitimate human name.",
+            };
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("AI name validation fallback:", err);
+    }
+
+    // Clean formatting
+    const cleanName = raw
+      .split(/\s+/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+
+    return { isValid: true, cleanName };
   });

@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +14,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { LEOMA_IDENTITY } from "@/lib/constants";
+import { validateDisplayNameWithAI } from "@/lib/ai.functions";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -31,38 +33,36 @@ const CAPABILITIES = [
   {
     icon: Youtube,
     text: "Instant YouTube video & channel details",
-    color: "text-red-400",
+    color: "text-red-500",
   },
   {
     icon: Calculator,
     text: "100% accurate step-by-step math calculations",
-    color: "text-amber-400",
+    color: "text-amber-500",
   },
   {
     icon: MessageSquare,
     text: "Unfiltered Gen Z backbencher roasts & advice",
-    color: "text-purple-400",
+    color: "text-purple-500",
   },
   {
     icon: ShieldCheck,
     text: "Zero tracking • 100% private local storage",
-    color: "text-emerald-400",
+    color: "text-emerald-500",
   },
   {
     icon: Zap,
     text: "Ultra-fast response with deep reasoning",
-    color: "text-sky-400",
+    color: "text-sky-500",
   },
 ];
 
 function AuthPage() {
   const navigate = useNavigate();
   const { session, loginLocal } = useAuth();
-  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [step, setStep] = useState<"welcome" | "name">("welcome");
   const [userName, setUserName] = useState("");
-  const [, setVideoLoaded] = useState(false);
 
   // Dynamic Rotating Capabilities Ticker
   const [capabilityIdx, setCapabilityIdx] = useState(0);
@@ -76,7 +76,7 @@ function AuthPage() {
     }
   }, [session, isCreating, navigate]);
 
-  // Capability ticker auto-rotation every 2.5s
+  // Capability ticker auto-rotation every 2.6s
   useEffect(() => {
     const timer = setInterval(() => {
       setCapabilityIdx((prev) => (prev + 1) % CAPABILITIES.length);
@@ -84,108 +84,91 @@ function AuthPage() {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    video.muted = true;
-    video.defaultMuted = true;
-
-    const tryPlay = () => {
-      video
-        .play()
-        .then(() => setVideoLoaded(true))
-        .catch(() => {
-          // Autoplay policy might await user interaction
-        });
-    };
-
-    tryPlay();
-
-    const handleUserGesture = () => {
-      if (video.paused) {
-        void video.play().then(() => setVideoLoaded(true));
-      }
-    };
-
-    window.addEventListener("click", handleUserGesture, { once: true });
-    window.addEventListener("touchstart", handleUserGesture, { once: true });
-
-    return () => {
-      window.removeEventListener("click", handleUserGesture);
-      window.removeEventListener("touchstart", handleUserGesture);
-    };
-  }, []);
-
   const handleStartName = () => {
     setStep("name");
   };
 
-  const handleFinishOnboarding = (e: React.FormEvent) => {
+  const [isValidating, setIsValidating] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+
+  const handleFinishOnboarding = async (e: React.FormEvent) => {
     e.preventDefault();
-    const finalName = userName.trim() || "Bro";
+    setNameError(null);
+    const rawName = userName.trim();
 
-    // Clean, quick spinner without extra bloat
-    setIsCreating(true);
+    if (!rawName) {
+      setNameError("Please enter your real name.");
+      return;
+    }
 
-    setTimeout(() => {
-      loginLocal(finalName);
-      void navigate({ to: "/" });
-    }, 750);
+    setIsValidating(true);
+
+    try {
+      const res = await validateDisplayNameWithAI({ data: { name: rawName } });
+      setIsValidating(false);
+
+      if (!res.isValid) {
+        setNameError(res.reason || "Please enter a valid real name (e.g. Rahul, Sameer, Alex).");
+        toast.error(res.reason || "Invalid name entered");
+        return;
+      }
+
+      const cleanName = res.cleanName || rawName;
+      setIsCreating(true);
+
+      setTimeout(() => {
+        loginLocal(cleanName);
+        void navigate({ to: "/" });
+      }, 500);
+    } catch {
+      setIsValidating(false);
+      if (/[,/\\@#$%*+=<>?!_{}[\]~^;:|"]/.test(rawName) || rawName.length < 2) {
+        setNameError("Symbols or punctuation are not allowed. Please enter a real name.");
+        toast.error("Please enter a valid real name");
+        return;
+      }
+
+      setIsCreating(true);
+      setTimeout(() => {
+        loginLocal(rawName);
+        void navigate({ to: "/" });
+      }, 500);
+    }
   };
 
   const currentCap = CAPABILITIES[capabilityIdx] ?? CAPABILITIES[0]!;
   const CurrentCapIcon = currentCap.icon;
 
   return (
-    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-8 bg-black">
-      {/* HTML5 Video Backdrop */}
-      <video
-        ref={videoRef}
-        autoPlay
-        loop
-        muted
-        playsInline
-        preload="auto"
-        onLoadedData={() => setVideoLoaded(true)}
-        onCanPlay={() => setVideoLoaded(true)}
-        onPlaying={() => setVideoLoaded(true)}
-        className="absolute inset-0 size-full object-cover scale-100 pointer-events-none z-0 opacity-80 transition-opacity duration-500"
-      >
-        <source src={LEOMA_IDENTITY.authBackgroundVideo} type="video/mp4" />
-      </video>
-
-      {/* Dark scrim for crisp text contrast */}
-      <div className="absolute inset-0 bg-black/50 z-0 pointer-events-none" />
-
-      {/* Main Glass Card */}
-      <div className="relative z-10 w-full max-w-[390px]">
-        <div className="w-full rounded-3xl border border-white/20 bg-black/75 p-7 text-center text-white shadow-2xl backdrop-blur-2xl transition-all">
+    <main className="relative flex min-h-dvh items-center justify-center bg-background px-4 py-8 select-none">
+      {/* Main Clean Light Card */}
+      <div className="relative z-10 w-full max-w-[430px]">
+        <div className="w-full rounded-3xl border border-border/80 bg-card p-8 sm:p-9 text-center text-card-foreground shadow-xl backdrop-blur-xl transition-all">
           {/* Creation Sequence View: Clean Minimalist Spinner */}
           {isCreating ? (
             <div className="py-12 flex flex-col items-center justify-center space-y-3 animate-in fade-in duration-200">
-              <Loader2 className="size-8 text-white animate-spin stroke-[2.2]" />
+              <Loader2 className="size-9 text-primary animate-spin stroke-[2.2]" />
             </div>
           ) : (
             <>
               {/* AI Logo Image */}
-              <div className="relative mx-auto size-20 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/30 mb-4 bg-white/10">
+              <div className="relative mx-auto size-24 rounded-2xl overflow-hidden shadow-md border border-border/60 mb-5 bg-secondary">
                 <img
                   src={LEOMA_IDENTITY.avatar}
-                  alt="AARAMB Logo"
+                  alt="AARAMBH Logo"
                   className="size-full object-cover"
                 />
               </div>
 
-              {/* Title: Normal Crisp White Text, No Gradient, No Verified Badge */}
-              <div className="flex items-center justify-center mb-1">
-                <h1 className="text-2xl font-bold tracking-tight text-white">
+              {/* Title */}
+              <div className="flex items-center justify-center mb-1.5">
+                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
                   {LEOMA_IDENTITY.name}
                 </h1>
               </div>
 
               {/* Dynamic Welcome Greeting as user types */}
-              <p className="text-xs text-white/85 leading-relaxed max-w-[300px] mx-auto mb-6 font-medium">
+              <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-[340px] mx-auto mb-6 font-medium">
                 {step === "name" && userName.trim()
                   ? `Welcome, ${userName.trim()}! Ready to chat?`
                   : "Your private, intelligent AI companion. 100% free and saved directly on your device."}
@@ -196,10 +179,10 @@ function AuthPage() {
                   <Button
                     type="button"
                     onClick={handleStartName}
-                    className="h-12 w-full rounded-2xl bg-white text-black font-bold text-sm shadow-xl hover:bg-white/90 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
+                    className="h-13 w-full rounded-2xl bg-primary text-primary-foreground font-bold text-base shadow-sm hover:bg-primary/90 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
                   >
                     <span>Get Started</span>
-                    <ArrowRight className="size-4" />
+                    <ArrowRight className="size-5" />
                   </Button>
                 </div>
               ) : (
@@ -207,12 +190,12 @@ function AuthPage() {
                   onSubmit={handleFinishOnboarding}
                   className="space-y-4 text-left animate-in fade-in duration-200"
                 >
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <label
                       htmlFor="name_input"
-                      className="text-xs text-white/90 font-semibold px-1 flex items-center gap-1.5"
+                      className="text-sm text-foreground font-semibold px-1 flex items-center gap-2"
                     >
-                      <User className="size-3.5 text-white/80" />
+                      <User className="size-4 text-primary" />
                       What should I call you?
                     </label>
                     <input
@@ -221,30 +204,52 @@ function AuthPage() {
                       required
                       autoFocus
                       value={userName}
-                      onChange={(e) => setUserName(e.target.value)}
+                      onChange={(e) => {
+                        setUserName(e.target.value);
+                        if (nameError) setNameError(null);
+                      }}
                       placeholder="Enter your name..."
-                      className="h-11 w-full rounded-2xl bg-white/10 border border-white/20 text-white placeholder:text-white/40 text-xs px-3.5 focus:outline-none focus:ring-2 focus:ring-white/40 transition-all font-medium"
+                      className={`h-13 w-full rounded-2xl bg-secondary/80 border text-foreground placeholder:text-muted-foreground/60 text-base px-4 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-medium ${
+                        nameError
+                          ? "border-destructive ring-1 ring-destructive/50"
+                          : "border-border"
+                      }`}
                     />
+                    {nameError && (
+                      <p className="text-xs text-destructive font-semibold px-1.5 pt-0.5 animate-in fade-in">
+                        {nameError}
+                      </p>
+                    )}
                   </div>
 
                   <Button
                     type="submit"
-                    className="h-12 w-full rounded-2xl bg-white text-black font-bold text-sm shadow-xl hover:bg-white/90 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
+                    disabled={isValidating}
+                    className="h-13 w-full rounded-2xl bg-primary text-primary-foreground font-bold text-base shadow-sm hover:bg-primary/90 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-70"
                   >
-                    <span>Start Chatting</span>
-                    <ArrowRight className="size-4" />
+                    {isValidating ? (
+                      <>
+                        <Loader2 className="size-5 animate-spin" />
+                        <span>Validating Name...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Start Chatting</span>
+                        <ArrowRight className="size-5" />
+                      </>
+                    )}
                   </Button>
                 </form>
               )}
 
               {/* Dynamic Rotating Capabilities Ticker */}
-              <div className="mt-6 pt-4 border-t border-white/10 min-h-[40px] flex items-center justify-center">
+              <div className="mt-6 pt-4 border-t border-border/60 min-h-[44px] flex items-center justify-center">
                 <div
                   key={capabilityIdx}
-                  className="flex items-center justify-center gap-2 text-[11.5px] font-medium text-white/80 animate-in fade-in slide-in-from-bottom-1 duration-300"
+                  className="flex items-center justify-center gap-2 text-xs sm:text-sm font-medium text-muted-foreground animate-in fade-in slide-in-from-bottom-1 duration-300"
                 >
-                  <CurrentCapIcon className={`size-4 shrink-0 ${currentCap.color}`} />
-                  <span className="truncate max-w-[280px]">{currentCap.text}</span>
+                  <CurrentCapIcon className={`size-4.5 shrink-0 ${currentCap.color}`} />
+                  <span className="truncate max-w-[300px]">{currentCap.text}</span>
                 </div>
               </div>
             </>

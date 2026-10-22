@@ -566,7 +566,7 @@ export const STUDY_OR_ACADEMIC_REGEX =
   /(?:study|padhai|padhna|padhe|exam|pariksha|chapter|lesson|subject|math|ganit|physics|chemistry|biology|science|history|itihas|geography|bhugol|grammar|vyakaran|formula|theorem|homework|syllabus|solution|algorithm|programming|coding|essay|nibandh|gk|upsc|jee|neet|cbse|ncert|class\s*\d+|kaksha|school|college|rules?|steps?|laws?|theor(?:y|ies)|definitions?|principles?|tips?|techniques?|alankar|sandhi|samas|muhavare|ras\s+chhand|tense|noun|pronoun|verb|adjective)/i;
 
 export const HAS_MEDIA_KEYWORDS_REGEX =
-  /(?:movie|movies|film|films|cinema|series|web\s*series|season|episode|anime|manga|actor|actress|director|box\s*office|trailer|soundtrack|मूवी|फिल्में|फिल्म|सिनेमा|सीरीज|एपिसोड|एक्टर|डायरेक्टर|ट्रेलर|थिएटर|हॉलीवुड|बॉलीवुड|एनीमे|कास्ट)/i;
+  /(?:movie|movies|film|films|cinema|series|web\s*series|season|episode|anime|manga|actor|actress|director|box\s*office|trailer|soundtrack|poster|posters|photo|photos|image|images|picture|pic|pics|dhurandhar|मूवी|फिल्में|फिल्म|सिनेमा|सीरीज|एपिसोड|एक्टर|डायरेक्टर|ट्रेलर|थिएटर|हॉलीवुड|बॉलीवुड|एनीमे|कास्ट|पोस्टर|फोटो|तस्वीर|चित्र)/i;
 
 // Clean user prompt to extract queried media title (e.g. "Stranger Things के बारे में बताओ" -> "Stranger Things")
 export function extractQueriedMediaFromUserPrompt(userPrompt: string): MediaSearchQuery | null {

@@ -1,94 +1,80 @@
-# Aarambh AI — Pristine Headings, Dynamic Multi-Color Text, Anime Filtered TMDB, and Stream Control Suite
+# Aarambh AI - Default Model, Complete Data Wipe on Logout, and Header Layout Plan
 
-## Executive Summary
-This upgrade cleans up markdown heading parsing so raw `#` symbols never leak into headers, empowers Aarambh to highlight text in vibrant colors (red, green, yellow, blue, purple, orange), adds dedicated Anime/Animation genre filtering to TMDB with spacious card geometry, streamlines the "This one" movie selection into a clean compact visual card passing TMDB IDs in the background, and introduces a stop-generation button with partial-text regeneration.
-
----
+Updating Aarambh AI to enforce `gemini-3.8-flash` as the default model for all users, implement a total local storage wipe on logout, optimize onboarding name validation with rate-limit protection, and update the top header to showcase the Aarambh logo cleanly next to the model badge.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following product design choices have been confirmed through interactive interview:
-> 1. **Colored Text Highlights**: Automatic dynamic highlights (red, green, yellow, blue, purple, orange) for key terms, names, and concepts.
-> 2. **Movie Selection Appearance**: Compact white card with movie poster, title, and "This one" badge in the user message, passing TMDB ID to the AI in the background.
-> 3. **Streaming Abort Behavior**: When aborted by user, retain partial text and display an instant "Regenerate" button.
+> The following choices were confirmed by the user in Phase 1:
+
+- **Logout Data Handling**: Confirmed. Logout will automatically wipe all local storage (`localStorage.clear()`), purging all stored profile data, chat sessions, and message history so the user is treated as a 100% fresh new user upon signing out.
+- **Top Header Layout**: Confirmed. The Aarambh squircle logo avatar will be positioned directly in the top header adjacent to the `Aarambh 3.8 Flash` model selector badge, eliminating empty header spacing while preserving a clean, responsive single-line layout.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **Zero-Hash Clean Headings**: Strips any prefix or suffix hash symbols (`#`, `##`, `###`) completely, rendering crisp, modern title typography.
-- **AI Dynamic Multi-Color Highlights**: Aarambh uses custom color tags (`<red>...</red>`, `<green>...</green>`, `<yellow>...</yellow>`, `<blue>...</blue>`, `<purple>...</purple>`, `<orange>...</orange>`) to spotlight critical points, formulas, names, and insights.
-- **Dedicated Anime & Animation Filtering**: When queries mention anime or animation, TMDB queries specifically target genre `16` (Animation) or anime keywords, avoiding unrelated live-action series.
-- **Spacious TMDB Carousel**: Upgrades card geometry so posters and metadata are spacious, legible, and never feel squished.
-- **Streamlined Selection Flow**: Selecting a movie from the carousel creates a visual "This one" compact card in the chat while passing the TMDB ID, title, and year to Aarambh for a full breakdown.
-- **Stream Stop & Regenerate Controls**: A stop button during streaming/thinking, and a 1-tap regenerate button if generation is stopped or incomplete.
+- **Default Model**: All new user profiles default to `gemini-3.8-flash` (`Aarambh 3.8 Flash`).
+- **Complete Session Purge**: Clicking "Sign Out" in profile settings completely wipes `aarambh_user_profile`, `aarambh_chat_sessions`, `aarambh_messages`, and all local cached states.
+- **Resilient Name Validation**: Pre-validates display names with fast local regex (2-30 printable alpha-numeric/Unicode characters, rejecting whitespace-only or punctuation-only strings) before triggering AI validation (`validateDisplayNameWithAI`). If the AI call encounters rate limits (429) or network errors, it fails open gracefully using local heuristics so onboarding is never stuck.
+- **Refined Header UX**: Compact brand header combining the Aarambh logo, brand name, and model selection dropdown badge seamlessly.
 
 ---
 
 ## 2. User Experience & Visual Design
 
-### Key User Flows
-1. **Reading Structured Responses**: Headers appear as clean, large, bold typography with no leading `#` characters. Important concepts glow with semantic text colors (e.g. green for positives/results, yellow for warnings, red for critical rules, blue/purple for key terms).
-2. **Anime & Movie Browsing**: Asking for anime like "Death Note" or "Attack on Titan" returns actual animation series posters, with spacious `140px`-wide cards, crisp typography, and touch-friendly targets.
-3. **Selecting a Movie**: Tapping "This one" on any card immediately inserts a clean user message card showing the poster thumbnail, title, and "✓ This one" badge. Aarambh responds with full details using the background TMDB ID.
-4. **Stopping & Regenerating**: When Aarambh is thinking or streaming, the send button switches to a Stop icon (`Square`). Clicking it halts generation instantly, keeping the partial text and revealing a "Regenerate" button next to the copy action.
-
-### Visual Styling & Palette
-- **Multi-Color Tokens**:
-  - `red`: `text-rose-600 dark:text-rose-400 font-semibold bg-rose-500/10 px-1 py-0.5 rounded-md`
-  - `green`: `text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-1 py-0.5 rounded-md`
-  - `yellow`: `text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/10 px-1 py-0.5 rounded-md`
-  - `blue`: `text-sky-600 dark:text-sky-400 font-semibold bg-sky-500/10 px-1 py-0.5 rounded-md`
-  - `purple`: `text-purple-600 dark:text-purple-400 font-semibold bg-purple-500/10 px-1 py-0.5 rounded-md`
-  - `orange`: `text-orange-600 dark:text-orange-400 font-semibold bg-orange-500/10 px-1 py-0.5 rounded-md`
-- **Stop Button**: High-contrast square stop button (`bg-destructive text-destructive-foreground`).
-- **Regenerate Button**: Smooth rotate icon (`RotateCcw`) beside Copy.
+- **Onboarding Flow**:
+  - Unauthenticated / reset user sees the onboarding view asking for their display name.
+  - Submitting a display name executes local regex validation first. If valid, AI checks for actual human name traits. If rate-limited or offline, local validation accepts valid name formats directly.
+- **Header Navigation**:
+  - Displays a crisp, squircle-cropped Aarambh logo avatar next to the `Aarambh 3.8 Flash` dropdown badge.
+  - Sidebar toggle on the left, clear chat button, and profile menu on the right.
+- **Logout Action**:
+  - Selecting "Logout" purges all `localStorage` keys, re-initializes `useAuth` state to `user = null`, and routes back to the welcoming onboarding screen.
 
 ---
 
-## 3. Technical Architecture & Component Mapping
+## 3. Technical Architecture & Data Strategy
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                       Chat Page View                        │
-│                                                             │
-│   ┌─────────────────────────────────────────────────────┐   │
-│   │              Input Bar & Stream Controls            │   │
-│   │  - AbortController signal management                │   │
-│   │  - Toggle Send vs Stop button                       │   │
-│   │  - onRegenerate handler for incomplete messages     │   │
-│   └──────────────────────────┬──────────────────────────┘   │
-│                              │                              │
-│   ┌──────────────────────────▼──────────────────────────┐   │
-│   │                   Message Bubble                    │   │
-│   │  - Clean Heading Regex (No raw '#' leakage)         │   │
-│   │  - Color Tag Parser (<red>, <green>, etc.)          │   │
-│   │  - Compact User Selection Card (<ThisOneCard />)    │   │
-│   │  - Regenerate Action Button for stopped messages    │   │
-│   └──────────────────────────┬──────────────────────────┘   │
-│                              │                              │
-│   ┌──────────────────────────▼──────────────────────────┐   │
-│   │               TMDB Integration Engine               │   │
-│   │  - Anime & Animation query detector & filter        │   │
-│   │  - Enhanced card geometry (no squished layout)      │   │
-│   │  - Background payload with TMDB ID                  │   │
-│   └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                          Aarambh AI Web Client                          │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│  ┌───────────────────────┐             ┌────────────────────────────┐  │
+│  │   Top Header Navbar   │             │   Onboarding / Profile     │  │
+│  │  [Logo] Aarambh 3.8   │             │  Local Regex + AI Fail-Open│  │
+│  └───────────┬───────────┘             └─────────────┬──────────────┘  │
+│              │                                       │                 │
+│              ▼                                       ▼                 │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │                 useAuth & Local Storage Engine                   │  │
+│  │   - signOut() -> localStorage.clear() + reset all React states   │  │
+│  │   - defaultModel: 'gemini-3.8-flash'                             │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Component Details
-- `src/components/chat/MessageBubble.tsx`:
-  - Regex sanitization of `#` in headings: `/^#+\s*|\s*#+$/g`.
-  - Color tag regex and token renderer for `<red>`, `<green>`, `<yellow>`, `<blue>`, `<purple>`, `<orange>`.
-  - Render compact user selection card when message contains a selected movie payload.
-  - Add `onRegenerate` button for incomplete messages (`isAborted: true`).
-- `src/lib/tmdb.ts`:
-  - Detect anime keywords (`anime`, `एनीमे`, `animation`, `manga`) and prioritize animation media type and genre ID `16`.
-- `src/components/chat/TMDBMovieCard.tsx`:
-  - Increase card width and spacing to avoid cramped text.
-- `src/routes/index.tsx`:
-  - Add `AbortController` tracking to cancel streaming on Stop click.
-  - Implement `handleRegenerate(messageId)` and pass `isAborted` status.
-- `src/lib/constants.ts`:
-  - Teach Aarambh how to use `<green>`, `<yellow>`, `<red>`, `<blue>`, `<purple>`, `<orange>` tags naturally for highlights.
+### Key Interactive Components & State Modifications
+
+1. **`src/hooks/useAuth.tsx`**:
+   - Update `signOut`: Run `localStorage.clear()` (or explicitly remove all `aarambh_*` items) and reset `user` state to `null`.
+   - Update default profile model initialization to `gemini-3.8-flash`.
+
+2. **`src/lib/ai.functions.ts`**:
+   - Enhance `validateDisplayNameWithAI`:
+     - Local validation check for non-empty, non-symbol-only, 2-30 character string.
+     - Try AI evaluation via `/api/gemini/generate`.
+     - `try/catch` block: On 429 rate-limit or network failure, fail open using local regex validation response.
+
+3. **`src/routes/index.tsx`**:
+   - Update top header: Render the Aarambh logo image (squircle icon) right beside the `Aarambh 3.8 Flash` model title/badge.
+   - Ensure `Aarambh 3.8 Flash` is always the default model fallback.
+
+---
+
+## 4. Verification & Testing Strategy
+
+- Run `compile_applet` and `lint_applet` to ensure zero build errors and clean TypeScript compliance.
+- Test onboarding with valid names, invalid punctuation/junk names, and verify fallback behavior.
+- Test logout flow to verify complete clearing of `localStorage` and reset to onboarding state.

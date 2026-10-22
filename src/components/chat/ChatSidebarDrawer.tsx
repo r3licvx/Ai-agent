@@ -152,10 +152,14 @@ export function ChatSidebarDrawer({
                       />
 
                       {session.isGeneratingTitle ? (
-                        /* AI Skeleton Title Loader */
-                        <div className="space-y-1 flex-1 py-0.5">
-                          <div className="h-3.5 w-24 bg-muted-foreground/25 rounded-sm animate-pulse" />
-                          <div className="h-2 w-14 bg-muted-foreground/15 rounded-sm animate-pulse" />
+                        /* AI Skeleton Title Loader with smooth white shimmering line */
+                        <div className="space-y-1.5 flex-1 py-0.5 min-w-0">
+                          <div className="relative h-3.5 w-28 overflow-hidden rounded-md bg-muted/60">
+                            <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/80 dark:via-white/40 to-transparent animate-[shimmer-slide_1.2s_infinite]" />
+                          </div>
+                          <div className="relative h-2 w-16 overflow-hidden rounded-md bg-muted/40">
+                            <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/80 dark:via-white/40 to-transparent animate-[shimmer-slide_1.2s_infinite_200ms]" />
+                          </div>
                         </div>
                       ) : isEditing ? (
                         /* Inline Rename Form */

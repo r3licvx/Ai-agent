@@ -41,13 +41,12 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
 
   const handleScroll = (direction: "left" | "right") => {
     if (!scrollRef.current) return;
-    const offset = direction === "left" ? -280 : 280;
+    const offset = direction === "left" ? -260 : 260;
     scrollRef.current.scrollBy({ left: offset, behavior: "smooth" });
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     if (!scrollRef.current) return;
-    // Allow natural vertical mouse wheel to scroll horizontal strip smoothly
     if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && Math.abs(e.deltaY) > 5) {
       scrollRef.current.scrollLeft += e.deltaY;
     }
@@ -56,8 +55,8 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
   if (!items || items.length === 0) return null;
 
   return (
-    <div className="relative my-3.5 w-full group/strip">
-      {/* Left Scroll Button (Desktop hover only so it never blocks posters on mobile touch devices) */}
+    <div className="relative my-3 w-full group/strip">
+      {/* Left Scroll Button (Desktop) */}
       {canScrollLeft && (
         <button
           type="button"
@@ -70,7 +69,7 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
         </button>
       )}
 
-      {/* Right Scroll Button (Desktop hover only) */}
+      {/* Right Scroll Button (Desktop) */}
       {canScrollRight && (
         <button
           type="button"
@@ -83,11 +82,11 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
         </button>
       )}
 
-      {/* Clean horizontal scroll strip with full screen width bleed on mobile and natural touch & wheel scroll */}
+      {/* Sleek horizontal side-scrolling strip */}
       <div
         ref={scrollRef}
         onWheel={handleWheel}
-        className="flex gap-3 overflow-x-auto pb-2 no-scrollbar scroll-smooth overscroll-x-contain -mx-3.5 px-3.5 sm:mx-0 sm:px-0"
+        className="flex gap-3 overflow-x-auto pb-2 pt-0.5 no-scrollbar scroll-smooth overscroll-x-contain w-full pl-9 pr-3"
       >
         {items.map((movie) => {
           const tmdbUrl = `https://www.themoviedb.org/${movie.mediaType}/${movie.id}`;
@@ -95,9 +94,9 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
           return (
             <div
               key={`${movie.mediaType}-${movie.id}`}
-              className="shrink-0 w-[150px] sm:w-[165px] rounded-2xl overflow-hidden bg-card border border-border/70 shadow-xs hover:shadow-md hover:border-primary/50 transition-all duration-200 group/card flex flex-col justify-between select-none"
+              className="shrink-0 w-[145px] sm:w-[160px] rounded-2xl overflow-hidden bg-card border border-border/70 shadow-xs hover:shadow-md hover:border-primary/50 transition-all duration-200 group/card flex flex-col justify-between select-none"
             >
-              {/* Poster and Title Link (Navigates to TMDB) */}
+              {/* Poster and Title Link */}
               <a
                 href={tmdbUrl}
                 target="_blank"
@@ -105,7 +104,7 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
                 className="block no-underline flex-1 flex flex-col justify-between"
                 title={`View ${movie.title} on TMDB`}
               >
-                {/* Poster container with fixed 2:3 aspect ratio preventing layout shifts */}
+                {/* Poster container with fixed 2:3 aspect ratio */}
                 <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted/40">
                   {movie.posterPath ? (
                     <img
@@ -170,7 +169,7 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
                 </div>
               </a>
 
-              {/* Bottom Action Bar: TMDB & Official Trailer Links (Never nested in an anchor tag) */}
+              {/* Bottom Action Bar: TMDB & Official Trailer Links */}
               <div className="px-2.5 pb-2.5 pt-1.5 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
                 <a
                   href={tmdbUrl}
@@ -204,5 +203,4 @@ export function TMDBMediaCards({ items }: TMDBMediaCardsProps) {
   );
 }
 
-// Keep backwards-compatible export name if referenced elsewhere
 export const TMDBMovieCarousel = TMDBMediaCards;

@@ -178,9 +178,10 @@ ${groundedTMDBItems.some((i) => i.trailerUrl) ? "* **Official Trailer:** [Includ
       day: "numeric",
     });
 
-    const realTimeSystemPrompt = `\n\n### 🌐 LIVE REAL-TIME KNOWLEDGE & CURRENT DATE CONTEXT:
+    const realTimeSystemPrompt = `\n\n### 🌐 LIVE REAL-TIME KNOWLEDGE & SYLLABUS / COURSE VERIFICATION (YEAR 2026):
 - Current System Date: ${currentRealTimeDate} (Year 2026)
 - Automatically discuss current/latest 2026 events, movies, news, scores, tech updates, and world developments as live knowledge.
+- FOR ANY ACADEMIC COURSE, TEXTBOOK CHAPTER, OR BOARD SYLLABUS QUERY (e.g. Telugu, Hindi, State Board, CBSE, NCERT, ICSE): ALWAYS verify against the latest 2025-2026 updated syllabus curriculum. NEVER output outdated or deleted chapters from old courses!
 - Never state that you don't have real-time data or mention knowledge cutoff dates.`;
 
     const messages: ChatMsg[] = [
